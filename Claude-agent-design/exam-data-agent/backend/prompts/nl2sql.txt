@@ -8,7 +8,11 @@
 - **用户留存**：留存率、次日留存、周留存 → 查 dws.dws_retention_user_report_week
 - **用户行为**：答题、模考、课程、播放进度、刷题量 → 查 dws.dws_user_behavior_report_week
 - **销售收入**：销售额、直充、销售金额 → 查 bigdata.v_ws_salesflow_ex
-- **综合概览**：最近情况、整体怎么样 → 查 dws.dws_active_user_report_week 最新一行
+- **用户反馈/客服**：客服、投诉、反馈、评价、问题类型、进线量 → 查 dws.dws_customer_service（客服进线数据）
+- **综合概览**：最近情况、整体怎么样、数据怎么样 → 查 dws.dws_active_user_report_week 最新一行（给出注册+活跃+有效活跃）
+- **异常/评价类**："有什么异常吗""好不好""还行吗""有没有好转" → 同综合概览，查最新2行数据做环比对比
+- **关键指标汇总**："关键指标""核心指标""所有指标" → 查最新一周的注册+活跃+付费+留存核心数据
+- **口语化表达映射**："拉新"=注册用户，"钱/赚了多少"=销售额，"粘性"=留存率+活跃率，"DAU"=日活跃用户
 
 ## 第二步：时间理解（极其重要）
 
@@ -80,6 +84,18 @@
 - 销售日期: 日期字符串
 - 销售部门名称: 如 'APP直充'
 
+### dws.dws_customer_service（客服进线数据）
+- question_id: 问题编号（如 'ZC241231-00066'）
+- question_type: 问题类型（视频问题/操作开通咨询/产品咨询/退费问题/账号问题/技术问题等）
+- title: 问题标题
+- question_theme: 问题主题（技术异常类/课程科目类/使用指导类/退费退款类/账号异常类等）
+- submit_time: 提交时间（datetime）
+- status1: 问题状态（简单/一般/复杂）
+- subject_name: 科目名称
+- series_name: 系列名称（临床医学类/护理学类/主治医师/药学类等）
+- question_content: 问题内容（用户描述）
+- solution: 处理意见（客服回复）
+
 ## 业务规则
 - 周报表的业务周定义：周六起始，周五结束（但用户口中的"本周/上周"指自然周周一~周日）
 - 百分比字段存储时带%号，计算时需REPLACE去掉%再转数值
@@ -110,3 +126,33 @@ SQL: SELECT stat_date, daily_register_count AS 注册用户 FROM dws.dws_user_da
 
 用户: 和上周比呢（上文查的是销售额3月）
 SQL: SELECT SUM(CASE WHEN SUBSTRING(销售日期,1,7) = '2026-03' THEN 售价 ELSE 0 END) AS 本月销售额, SUM(CASE WHEN SUBSTRING(销售日期,1,7) = '2026-02' THEN 售价 ELSE 0 END) AS 上月销售额, CONCAT(ROUND(((SUM(CASE WHEN SUBSTRING(销售日期,1,7) = '2026-03' THEN 售价 ELSE 0 END) / NULLIF(SUM(CASE WHEN SUBSTRING(销售日期,1,7) = '2026-02' THEN 售价 ELSE 0 END), 0)) - 1) * 100, 2), '%') AS 环比增长率 FROM bigdata.v_ws_salesflow_ex WHERE SUBSTRING(销售日期,1,7) IN ('2026-03', '2026-02') AND 销售部门名称 = 'APP直充'
+
+用户: 最近客服进线情况
+SQL: SELECT question_type AS 问题类型, COUNT(*) AS 数量 FROM dws.dws_customer_service WHERE submit_time >= DATE_SUB('{today}', INTERVAL 7 DAY) GROUP BY question_type ORDER BY 数量 DESC
+
+用户: 用户反馈最多的问题是什么
+SQL: SELECT question_theme AS 问题主题, COUNT(*) AS 数量 FROM dws.dws_customer_service WHERE submit_time >= DATE_SUB('{today}', INTERVAL 30 DAY) GROUP BY question_theme ORDER BY 数量 DESC LIMIT 10
+
+用户: 退费投诉有多少
+SQL: SELECT COUNT(*) AS 退费投诉数, DATE(submit_time) AS 日期 FROM dws.dws_customer_service WHERE question_type = '退费问题' AND submit_time >= DATE_SUB('{today}', INTERVAL 30 DAY) GROUP BY DATE(submit_time) ORDER BY 日期 DESC
+
+用户: 哪个系列的客服问题最多
+SQL: SELECT series_name AS 系列, COUNT(*) AS 进线量 FROM dws.dws_customer_service WHERE submit_time >= DATE_SUB('{today}', INTERVAL 30 DAY) GROUP BY series_name ORDER BY 进线量 DESC LIMIT 10
+
+用户: 有什么异常吗
+SQL: SELECT a.start_dt, a.end_dt, a.reg_users AS 注册用户, a.active_users AS 活跃用户, a.valid_active_users AS 有效活跃, CONCAT(ROUND((a.reg_users - b.reg_users)/b.reg_users*100, 2), '%') AS 注册环比, CONCAT(ROUND((a.active_users - b.active_users)/b.active_users*100, 2), '%') AS 活跃环比 FROM dws.dws_active_user_report_week a LEFT JOIN dws.dws_active_user_report_week b ON a.start_dt = DATE_ADD(b.start_dt, INTERVAL 7 DAY) ORDER BY a.end_dt DESC LIMIT 2
+
+用户: 给我看看关键指标
+SQL: SELECT a.start_dt, a.end_dt, a.reg_users AS 注册用户, a.active_users AS 活跃用户, p.pay_users AS 付费用户, p.pay_conv_rate AS 付费转化率, r.n1_ret_rate AS 次日留存率, r.w_ret_rate AS 周留存率 FROM dws.dws_active_user_report_week a LEFT JOIN dws.dws_pay_user_report_week p ON a.start_dt = p.start_dt LEFT JOIN dws.dws_retention_user_report_week r ON a.start_dt = r.start_dt ORDER BY a.end_dt DESC LIMIT 1
+
+用户: 产品运营还行吗
+SQL: SELECT a.start_dt, a.end_dt, a.reg_users AS 注册用户, a.active_users AS 活跃用户, a.valid_active_users AS 有效活跃, CONCAT(ROUND((a.reg_users - b.reg_users)/b.reg_users*100, 2), '%') AS 注册环比, CONCAT(ROUND((a.active_users - b.active_users)/b.active_users*100, 2), '%') AS 活跃环比 FROM dws.dws_active_user_report_week a LEFT JOIN dws.dws_active_user_report_week b ON a.start_dt = DATE_ADD(b.start_dt, INTERVAL 7 DAY) ORDER BY a.end_dt DESC LIMIT 2
+
+用户: 拉新做得咋样
+SQL: SELECT start_dt, end_dt, reg_users AS 注册用户 FROM dws.dws_active_user_report_week ORDER BY end_dt DESC LIMIT 4
+
+用户: DAU多少
+SQL: SELECT stat_date, daily_active_count AS DAU FROM dws.dws_user_daily_quiz_stats_day WHERE stat_date = DATE_SUB('{today}', INTERVAL 1 DAY)
+
+用户: 按周分别多少（上文查的是3月销售）
+SQL: SELECT WEEK(销售日期) AS 周, MIN(销售日期) AS 起始日, MAX(销售日期) AS 截止日, SUM(售价) AS 销售额 FROM bigdata.v_ws_salesflow_ex WHERE SUBSTRING(销售日期,1,7) = '2026-03' AND 销售部门名称 = 'APP直充' GROUP BY WEEK(销售日期) ORDER BY 周

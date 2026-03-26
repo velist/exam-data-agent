@@ -26,5 +26,6 @@ ALLOWED_TABLES = [
     "dws.dws_pay_user_report_week",
     "dws.dws_retention_user_report_week",
     "dws.dws_user_behavior_report_week",
+    "dws.dws_customer_service",
     "bigdata.v_ws_salesflow_ex",
 ]
