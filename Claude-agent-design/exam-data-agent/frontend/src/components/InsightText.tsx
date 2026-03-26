@@ -1,9 +1,8 @@
 import { useEffect, useState } from "react";
-import { Card, Spin, Typography } from "antd";
+import { Card, Spin } from "antd";
 import { BulbOutlined } from "@ant-design/icons";
+import ReactMarkdown from "react-markdown";
 import { streamInsight } from "../api";
-
-const { Paragraph } = Typography;
 
 interface Props {
   type: "weekly" | "monthly";
@@ -27,10 +26,16 @@ export default function InsightText({ type, date }: Props) {
   return (
     <Card title={<><BulbOutlined /> AI 分析洞察</>} style={{ marginTop: 24 }}>
       {loading && !text && <Spin tip="正在分析数据..." />}
-      <Paragraph style={{ whiteSpace: "pre-wrap" }}>
-        {text}
+      <div className="insight-markdown">
+        <ReactMarkdown>{text}</ReactMarkdown>
         {loading && text && <span style={{ animation: "blink 1s step-end infinite" }}>|</span>}
-      </Paragraph>
+      </div>
+      <style>{`
+        .insight-markdown h3 { font-size: 16px; font-weight: 600; margin: 16px 0 8px; }
+        .insight-markdown ul { padding-left: 20px; }
+        .insight-markdown li { margin-bottom: 6px; line-height: 1.8; }
+        .insight-markdown strong { color: #1677ff; }
+      `}</style>
     </Card>
   );
 }
