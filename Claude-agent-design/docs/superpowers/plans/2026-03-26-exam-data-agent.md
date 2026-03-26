@@ -108,15 +108,15 @@ dist/
 
 从项目根目录的各个密钥文件读取，整合到一个`.env`：
 ```env
-# 数据库
-DB_HOST=am-bp1s2h8891l2u1mnl167320o.ads.aliyuncs.com
+# 数据库（从 数据库链接.md、数据库账号.md、数据库密码.env 读取）
+DB_HOST=<从 数据库链接.md 读取>
 DB_PORT=3306
-DB_USER=chenzhi
-DB_PASSWORD=25823291@Yingedu
+DB_USER=<从 数据库账号.md 读取>
+DB_PASSWORD=<从 数据库密码.env 读取>
 DB_NAME=dws
 
-# 千问API
-QWEN_API_KEY=sk-fe955bdbb4434be799c823bca4484c9a
+# 千问API（从 千问key.env 读取）
+QWEN_API_KEY=<从 千问key.env 读取>
 QWEN_BASE_URL=https://dashscope.aliyuncs.com/compatible-mode/v1
 QWEN_MODEL=qwen-plus
 ```
@@ -278,6 +278,10 @@ def test_reject_unknown_table():
     assert validate_sql("SELECT * FROM secret_table") is False
 
 
+def test_reject_unknown_table_no_schema():
+    assert validate_sql("SELECT * FROM users") is False
+
+
 def test_reject_sleep():
     assert validate_sql("SELECT SLEEP(10)") is False
 
@@ -406,9 +410,9 @@ def _is_table_allowed(table_name: str) -> bool:
     # dws.* 通配
     if table_name.startswith("dws."):
         return True
-    # 不带schema的表名，视为dws库
+    # 不带schema的表名，假定在dws库中，也检查白名单
     if "." not in table_name:
-        return True
+        return f"dws.{table_name}" in ALLOWED_TABLES or table_name.startswith("dws_")
     return False
 
 
@@ -866,15 +870,47 @@ def get_weekly_report(date_str: str) -> dict:
         {"key": "quiz_rate", "label": "人均刷题量", "col": "quiz_rate", "last_col": "last_week_quiz_rate", "yoy_col": "quiz_rate_yoy"},
     ])
 
-    # 5. 用户增长（日粒度）
+    # 5. 用户增长（日粒度）— 也构建标准metrics结构
     sql = _load_template("weekly_user_growth.sql")
     sql_lines = [l for l in sql.split("\n") if not l.strip().startswith("--")]
     sql_clean = "\n".join(sql_lines)
     data = execute_query(sql_clean, {"start_date": start_date, "end_date": end_date})
-    result["sections"]["user_growth"] = {
-        "columns": data["columns"],
-        "rows": data["rows"],
-    }
+    # 从daily数据构建metrics：取最后一行（周末累计值）
+    if data["rows"]:
+        col_idx = {c: i for i, c in enumerate(data["columns"])}
+        last_row = data["rows"][-1]
+        # 获取上周同指标用于环比（从active表最新行获取）
+        active_section = result["sections"].get("active", {})
+        active_metrics = active_section.get("metrics", {})
+
+        result["sections"]["user_growth"] = {
+            "metrics": {
+                "daily_register": {
+                    "label": "本周日均注册",
+                    "value": last_row[col_idx.get("week_avg_register", 0)],
+                    "wow": active_metrics.get("reg_users", {}).get("wow", "N/A"),
+                    "yoy": active_metrics.get("reg_users", {}).get("yoy", "N/A"),
+                },
+                "daily_active": {
+                    "label": "本周日均活跃",
+                    "value": last_row[col_idx.get("week_avg_active", 0)],
+                    "wow": active_metrics.get("active_users", {}).get("wow", "N/A"),
+                    "yoy": active_metrics.get("active_users", {}).get("yoy", "N/A"),
+                },
+                "daily_avg_exam": {
+                    "label": "本周人均刷题",
+                    "value": last_row[col_idx.get("week_avg_exam", 0)],
+                    "wow": "N/A",
+                    "yoy": "N/A",
+                },
+            },
+            "trend": [
+                {"start": row[col_idx["stat_date"]], "daily_register": row[col_idx["daily_register_count"]], "daily_active": row[col_idx["daily_active_count"]]}
+                for row in data["rows"]
+            ],
+        }
+    else:
+        result["sections"]["user_growth"] = {"metrics": {}, "trend": []}
 
     return result
 
@@ -885,7 +921,6 @@ def get_monthly_report(month_str: str) -> dict:
     year, month = map(int, month_str.split("-"))
 
     # 查询该月所有周的数据（start_dt在该月的周）
-    # 使用active_user表获取周列表
     sql = """
     SELECT DISTINCT start_dt, end_dt
     FROM dws.dws_active_user_report_week
@@ -904,11 +939,81 @@ def get_monthly_report(month_str: str) -> dict:
         wr = get_weekly_report(end_dt)
         weekly_reports.append(wr)
 
-    # 汇总逻辑：取每周指标，计算月均值
+    # 月度汇总：遍历所有section和metric，计算月均值
+    all_sections = {}
+    for wr in weekly_reports:
+        for section_key, section_data in wr.get("sections", {}).items():
+            if "metrics" not in section_data:
+                continue
+            if section_key not in all_sections:
+                all_sections[section_key] = {}
+            for metric_key, metric in section_data["metrics"].items():
+                if metric_key not in all_sections[section_key]:
+                    all_sections[section_key][metric_key] = {"label": metric["label"], "values": []}
+                all_sections[section_key][metric_key]["values"].append(metric["value"])
+
+    # 构建月度metrics
+    sections = {}
+    for section_key, metrics_map in all_sections.items():
+        metrics = {}
+        for metric_key, info in metrics_map.items():
+            values = info["values"]
+            # 尝试计算均值（数值型）或取最后一个（百分比型）
+            try:
+                nums = [float(str(v).replace("%", "").replace(",", "")) for v in values if v and v != "N/A"]
+                avg_val = round(sum(nums) / len(nums), 2) if nums else "N/A"
+            except (ValueError, TypeError):
+                avg_val = values[-1] if values else "N/A"
+            metrics[metric_key] = {
+                "label": info["label"],
+                "value": avg_val,
+                "wow": "N/A",  # 月报环比需要上月数据
+                "yoy": "N/A",  # 月报同比需要去年同月数据
+            }
+        # 趋势取各周数值
+        trend = []
+        for wr in weekly_reports:
+            section_data = wr.get("sections", {}).get(section_key, {})
+            entry = {"start": wr["period"]["start"], "end": wr["period"]["end"]}
+            for metric_key in metrics:
+                entry[metric_key] = section_data.get("metrics", {}).get(metric_key, {}).get("value", "N/A")
+            trend.append(entry)
+        sections[section_key] = {"metrics": metrics, "trend": trend}
+
+    # 计算月环比（需查询上月数据）
+    prev_month_dt = datetime(year, month, 1) - timedelta(days=1)
+    prev_month_str = prev_month_dt.strftime("%Y-%m")
+    prev_sql = """
+    SELECT DISTINCT start_dt, end_dt
+    FROM dws.dws_active_user_report_week
+    WHERE SUBSTRING(start_dt, 1, 7) = :month
+    ORDER BY start_dt
+    """
+    prev_data = execute_query(prev_sql, {"month": prev_month_str})
+    if prev_data["rows"]:
+        prev_reports = [get_weekly_report(row[1]) for row in prev_data["rows"]]
+        # 计算上月各指标均值，与本月做环比
+        for section_key in sections:
+            for metric_key in sections[section_key]["metrics"]:
+                prev_values = []
+                for pr in prev_reports:
+                    v = pr.get("sections", {}).get(section_key, {}).get("metrics", {}).get(metric_key, {}).get("value")
+                    if v:
+                        prev_values.append(v)
+                if prev_values:
+                    try:
+                        prev_nums = [float(str(v).replace("%", "").replace(",", "")) for v in prev_values]
+                        prev_avg = sum(prev_nums) / len(prev_nums)
+                        sections[section_key]["metrics"][metric_key]["wow"] = calc_change_rate(
+                            sections[section_key]["metrics"][metric_key]["value"], prev_avg
+                        )
+                    except (ValueError, TypeError):
+                        pass
+
     result = {
         "period": {"month": month_str, "weeks": len(weekly_reports)},
-        "sections": {},
-        "weekly_reports": weekly_reports,  # 含各周明细，供前端渲染趋势
+        "sections": sections,
+        "weekly_reports": weekly_reports,
     }
 
     return result
@@ -1362,7 +1467,7 @@ git commit -m "feat: add FastAPI main entry with all API routes"
 ```bash
 cd exam-data-agent/frontend
 npm create vite@latest . -- --template react-ts
-npm install antd @ant-design/icons echarts echarts-for-react react-router-dom
+npm install antd @ant-design/icons echarts echarts-for-react react-router-dom dayjs
 ```
 
 - [ ] **Step 2: 创建api.ts（后端API封装）**
@@ -1450,7 +1555,27 @@ export default function App() {
 }
 ```
 
-- [ ] **Step 4: Commit**
+- [ ] **Step 4: 更新main.tsx入口文件**
+
+```tsx
+// exam-data-agent/frontend/src/main.tsx
+import React from "react";
+import ReactDOM from "react-dom/client";
+import { ConfigProvider } from "antd";
+import zhCN from "antd/locale/zh_CN";
+import App from "./App";
+import "./index.css";
+
+ReactDOM.createRoot(document.getElementById("root")!).render(
+  <React.StrictMode>
+    <ConfigProvider locale={zhCN}>
+      <App />
+    </ConfigProvider>
+  </React.StrictMode>
+);
+```
+
+- [ ] **Step 5: Commit**
 
 ```bash
 git add exam-data-agent/frontend/
@@ -1959,7 +2084,8 @@ export default function Report() {
           </div>
         ) : report ? (
           <>
-            {renderSection("active", "用户增长与活跃")}
+            {renderSection("user_growth", "用户增长")}
+            {renderSection("active", "用户活跃")}
             {renderSection("pay", "付费转化")}
             {renderSection("retention", "用户留存")}
             {renderSection("behavior", "用户行为")}
