@@ -106,12 +106,26 @@
 2. 构建Prompt：System Prompt（表元数据+字段说明+示例SQL）+ 用户问题 + 最近5轮上下文
 3. 千问模型生成SQL
 4. **安全校验**：
-   - 只允许SELECT语句
+   - 使用 `sqlparse` 库解析SQL AST，而非正则匹配
+   - 只允许SELECT语句（解析后statement type必须为SELECT）
    - 表名白名单：`dws.*` + `bigdata.v_ws_salesflow_ex`
-   - 禁止子查询中的DDL/DML
+   - 禁止危险函数：`LOAD_FILE`, `INTO OUTFILE`, `INTO DUMPFILE`, `SLEEP`, `BENCHMARK`
+   - 禁止DDL/DML关键字出现在任何位置（包括子查询、UNION）
 5. 执行SQL，30秒超时
 6. 将结果传给千问，生成一句话总结
 7. 返回前端：数据表格 + 总结文字
+
+**NL2SQL Prompt核心设计：**
+```
+System Prompt结构：
+1. 角色定义：你是考试宝典的数据查询助手，只能生成SELECT查询
+2. 表元数据：每张表的字段名、类型、含义、示例值
+3. 业务规则：周定义（周六起始周五结束）、字段中百分比值带%号需注意
+4. 输出约束：只输出一条SQL语句，不要解释，不要使用不在元数据中的表/字段
+5. 示例对：3-5个典型问答对（自然语言→SQL）
+```
+- 模型温度设为0，确保SQL生成稳定性
+- 对模糊查询（如"最近情况"），默认解释为最近一周
 
 **错误处理：**
 - SQL执行失败 → 千问自动修正一次 → 仍失败则返回友好提示
@@ -154,6 +168,7 @@
 
 **月报：**
 - 基于周报数据按月聚合
+- **跨月归属规则**：按周的起始日期（周六）所在月份归属。例如一周从3月29日（周六）到4月4日（周五），该周数据归属3月
 - 计算月度总量/均值 + 月环比 + 月同比
 - 返回格式同周报
 
@@ -169,11 +184,22 @@
 - 使用 `qwen-plus` 模型
 
 ### 4.4 安全机制
+- SQL校验：使用`sqlparse`解析AST，非正则匹配，防止注释符/UNION绕过
 - SQL白名单：仅允许SELECT
 - 表白名单：`dws.*` + `bigdata.v_ws_salesflow_ex`（后续可扩展）
 - 查询超时：30秒
 - 单次返回行数限制：1000行
 - 输入长度限制：500字符
+
+### 4.5 数据库连接配置
+- 连接池：SQLAlchemy连接池，pool_size=5，max_overflow=10
+- 连接超时：connect_timeout=10秒
+- 查询超时：执行层面30秒超时（`SET SESSION max_execution_time=30000`）
+
+### 4.6 趋势数据查询策略
+- 周报趋势：固定查最近8周数据，一次性返回，前端渲染折线图
+- 月报趋势：固定查最近6个月数据
+- 趋势数据包含在报告API响应的`trend`字段中，无需前端额外请求
 
 ---
 
@@ -222,8 +248,28 @@ exam-data-agent/
 ### 6.1 对话查询
 ```
 POST /api/chat
-Body: { "message": "上周新注册用户多少", "history": [...] }
-Response: { "answer": "上周新注册用户1,234人，环比增长5.2%", "table": [...] }
+Body:
+{
+  "message": "上周新注册用户多少",
+  "history": [
+    {"role": "user", "content": "本周活跃用户多少"},
+    {"role": "assistant", "content": "本周活跃用户12,345人"}
+  ]
+}
+Response:
+{
+  "answer": "上周新注册用户1,234人，环比增长5.2%",
+  "table": {
+    "columns": ["指标", "本周", "上周", "环比"],
+    "rows": [["新增注册用户", "1234", "1173", "+5.2%"]]
+  }
+}
+错误响应（统一格式）:
+{
+  "error": true,
+  "code": "SQL_TIMEOUT | SQL_FAILED | LLM_ERROR | INVALID_INPUT",
+  "message": "查询超时，请尝试缩小查询范围"
+}
 ```
 
 ### 6.2 获取周报数据
@@ -241,6 +287,7 @@ Response: { "period": {...}, "sections": {...} }
 ### 6.4 AI洞察（SSE流式）
 ```
 GET /api/insight/stream?type=weekly&date=2026-03-27
+说明：后端根据type和date自行查询报告数据，再传给千问生成洞察，前端无需传入报告数据
 Response: SSE stream，逐字输出分析文本
 ```
 
