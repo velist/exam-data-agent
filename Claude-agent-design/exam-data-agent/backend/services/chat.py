@@ -42,7 +42,7 @@ def _generate_sql(message: str, history: list[dict]) -> str:
         model=QWEN_MODEL,
         messages=messages,
         temperature=0,
-        max_tokens=1000,
+        max_tokens=2500,  # 增加到 2500 以支持复杂的多指标同比查询
     )
     return _clean_sql_response(response.choices[0].message.content)
 
@@ -93,7 +93,7 @@ def chat(message: str, history: list[dict] = None) -> dict:
                 {"role": "system", "content": "上一次生成的SQL不合规。请重新生成一条安全的SELECT查询。只使用dws库和bigdata.v_ws_salesflow_ex表。只输出SQL，不要解释。"},
                 {"role": "user", "content": f"原始问题：{message}\n不合规SQL：{sql}\n请重新生成合规的SQL。"},
             ]
-            response = client.chat.completions.create(model=QWEN_MODEL, messages=fix_messages, temperature=0, max_tokens=1000)
+            response = client.chat.completions.create(model=QWEN_MODEL, messages=fix_messages, temperature=0, max_tokens=2500)
             sql = _clean_sql_response(response.choices[0].message.content)
             if not validate_sql(sql):
                 return {"error": True, "code": "SQL_FAILED", "message": "无法生成合规的查询语句，请换个方式描述您的问题"}
@@ -118,7 +118,7 @@ def chat(message: str, history: list[dict] = None) -> dict:
                 {"role": "system", "content": _load_prompt("nl2sql.txt").replace("{today}", date.today().isoformat())},
                 {"role": "user", "content": f"用户问题：{message}\n\n注意：周报表没有数据（可能本周/本期还未结束），请改用日表 dws.dws_user_daily_quiz_stats_day 按日期范围查询。只输出SQL。"},
             ]
-            response = client.chat.completions.create(model=QWEN_MODEL, messages=retry_messages, temperature=0, max_tokens=1000)
+            response = client.chat.completions.create(model=QWEN_MODEL, messages=retry_messages, temperature=0, max_tokens=2500)
             retry_sql = _clean_sql_response(response.choices[0].message.content)
             logger.info(f"重试SQL: {retry_sql}")
             if validate_sql(retry_sql):
