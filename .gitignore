@@ -1,0 +1,12 @@
+.venv/
+.worktrees/
+__pycache__/
+.pytest_cache/
+.ruff_cache/
+*.pyc
+.env
+.env.*
+data/logs/
+data/dashboards/
+data/metadata/
+!.gitkeep
