@@ -1,9 +1,13 @@
 import os
+import logging
 from datetime import date
 from openai import OpenAI
 from config import QWEN_API_KEY, QWEN_BASE_URL, QWEN_MODEL, MAX_INPUT_LENGTH
 from sql_validator import validate_sql
 from db import execute_query
+
+logger = logging.getLogger("chat")
+logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(name)s] %(message)s")
 
 PROMPTS_DIR = os.path.join(os.path.dirname(__file__), '..', 'prompts')
 
@@ -75,11 +79,15 @@ def chat(message: str, history: list[dict] = None) -> dict:
     # 1. 生成SQL
     try:
         sql = _generate_sql(message, history)
-    except Exception:
+        logger.info(f"用户问题: {message}")
+        logger.info(f"生成SQL: {sql}")
+    except Exception as e:
+        logger.error(f"LLM调用失败: {e}")
         return {"error": True, "code": "LLM_ERROR", "message": "AI服务暂时不可用，请稍后重试"}
 
     # 2. 校验SQL
     if not validate_sql(sql):
+        logger.warning(f"SQL校验失败: {sql}")
         try:
             fix_messages = [
                 {"role": "system", "content": "上一次生成的SQL不合规。请重新生成一条安全的SELECT查询。只使用dws库和bigdata.v_ws_salesflow_ex表。只输出SQL，不要解释。"},
@@ -95,11 +103,32 @@ def chat(message: str, history: list[dict] = None) -> dict:
     # 3. 执行SQL
     try:
         table_data = execute_query(sql)
+        logger.info(f"查询结果: {len(table_data['rows'])}行, 列: {table_data['columns']}")
     except Exception as e:
         error_msg = str(e)
         if "max_execution_time" in error_msg.lower() or "timeout" in error_msg.lower():
             return {"error": True, "code": "SQL_TIMEOUT", "message": "查询超时，请尝试缩小查询范围或指定更具体的条件"}
         return {"error": True, "code": "SQL_FAILED", "message": "查询执行失败，请换个方式描述您的问题"}
+
+    # 3.5 空结果智能重试：如果查周报表返回空，尝试用日表重新查询
+    if not table_data["rows"] and "_report_week" in sql:
+        logger.info("周报表返回空，尝试用日表重新查询")
+        try:
+            retry_messages = [
+                {"role": "system", "content": _load_prompt("nl2sql.txt").replace("{today}", date.today().isoformat())},
+                {"role": "user", "content": f"用户问题：{message}\n\n注意：周报表没有数据（可能本周/本期还未结束），请改用日表 dws.dws_user_daily_quiz_stats_day 按日期范围查询。只输出SQL。"},
+            ]
+            response = client.chat.completions.create(model=QWEN_MODEL, messages=retry_messages, temperature=0, max_tokens=1000)
+            retry_sql = _clean_sql_response(response.choices[0].message.content)
+            logger.info(f"重试SQL: {retry_sql}")
+            if validate_sql(retry_sql):
+                retry_data = execute_query(retry_sql)
+                if retry_data["rows"]:
+                    table_data = retry_data
+                    sql = retry_sql
+                    logger.info(f"重试成功: {len(table_data['rows'])}行")
+        except Exception as e:
+            logger.warning(f"重试失败: {e}")
 
     # 4. 生成总结
     try:
