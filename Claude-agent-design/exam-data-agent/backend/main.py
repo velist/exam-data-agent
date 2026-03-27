@@ -1,3 +1,4 @@
+from contextlib import asynccontextmanager
 from fastapi import FastAPI, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
@@ -5,9 +6,17 @@ from pydantic import BaseModel
 from services.chat import chat
 from services.chat_stream import stream_chat_events
 from services.report import get_weekly_report, get_monthly_report
+from services.report_cache import init_cache
 from services.insight import stream_insight
 
-app = FastAPI(title="考试宝典数据助手")
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    init_cache()
+    yield
+
+
+app = FastAPI(title="考试宝典数据助手", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
