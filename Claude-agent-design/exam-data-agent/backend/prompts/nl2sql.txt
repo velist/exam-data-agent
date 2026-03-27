@@ -86,15 +86,16 @@
 
 ### dws.dws_customer_service（客服进线数据）
 - question_id: 问题编号（如 'ZC241231-00066'）
-- question_type: 问题类型（视频问题/操作开通咨询/产品咨询/退费问题/账号问题/技术问题等）
+- question_type: 问题类型（产品咨询/后台操作/咨询/资料问题/使用问题/转接/操作开通咨询/充值问题/登录问题/视频问题/投诉问题等，可多值逗号分隔）
 - title: 问题标题
-- question_theme: 问题主题（技术异常类/课程科目类/使用指导类/退费退款类/账号异常类等）
+- question_theme: 问题主题分类（使用指导类/退款类/支付开通类/技术异常类/课程科目类/题库内容类/服务时长类/转接销售类/账号登录类/其他类/社群联系类/投诉反馈类）
 - submit_time: 提交时间（datetime）
 - status1: 问题状态（简单/一般/复杂）
 - subject_name: 科目名称
 - series_name: 系列名称（临床医学类/护理学类/主治医师/药学类等）
 - question_content: 问题内容（用户描述）
 - solution: 处理意见（客服回复）
+- 注意：退费/退款查询用 question_theme='退款类'，投诉用 question_theme='投诉反馈类' 或 question_type LIKE '%投诉%'
 
 ## 业务规则
 - 周报表的业务周定义：周六起始，周五结束（但用户口中的"本周/上周"指自然周周一~周日）
@@ -134,7 +135,7 @@ SQL: SELECT question_type AS 问题类型, COUNT(*) AS 数量 FROM dws.dws_custo
 SQL: SELECT question_theme AS 问题主题, COUNT(*) AS 数量 FROM dws.dws_customer_service WHERE submit_time >= DATE_SUB('{today}', INTERVAL 30 DAY) GROUP BY question_theme ORDER BY 数量 DESC LIMIT 10
 
 用户: 退费投诉有多少
-SQL: SELECT COUNT(*) AS 退费投诉数, DATE(submit_time) AS 日期 FROM dws.dws_customer_service WHERE question_type = '退费问题' AND submit_time >= DATE_SUB('{today}', INTERVAL 30 DAY) GROUP BY DATE(submit_time) ORDER BY 日期 DESC
+SQL: SELECT DATE_FORMAT(submit_time, '%Y-%m') AS 月份, COUNT(*) AS 退款工单数 FROM dws.dws_customer_service WHERE question_theme = '退款类' AND submit_time >= DATE_SUB('{today}', INTERVAL 90 DAY) GROUP BY DATE_FORMAT(submit_time, '%Y-%m') ORDER BY 月份 DESC
 
 用户: 哪个系列的客服问题最多
 SQL: SELECT series_name AS 系列, COUNT(*) AS 进线量 FROM dws.dws_customer_service WHERE submit_time >= DATE_SUB('{today}', INTERVAL 30 DAY) GROUP BY series_name ORDER BY 进线量 DESC LIMIT 10
