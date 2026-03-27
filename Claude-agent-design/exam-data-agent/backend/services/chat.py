@@ -203,51 +203,52 @@ def _summarize_result(message: str, table_data: dict, history: list[dict] | None
     return response.choices[0].message.content.strip()
 
 
-def chat(message: str, history: list[dict] = None) -> dict:
-    """对话查询主函数。"""
-    if history is None:
-        history = []
+class ChatError(Exception):
+    """聊天流程中的可分类错误"""
+    def __init__(self, code: str, message: str):
+        super().__init__(message)
+        self.code = code
 
+
+def _validate_input(message: str) -> dict | None:
+    """校验输入，返回错误字典或 None"""
     if len(message) > MAX_INPUT_LENGTH:
         return {"error": True, "code": "INVALID_INPUT", "message": f"输入过长，请控制在{MAX_INPUT_LENGTH}字以内"}
+    return None
 
-    # 1. 生成SQL
-    try:
-        sql = _generate_sql(message, history)
-        logger.info(f"用户问题: {message}")
-        logger.info(f"生成SQL: {sql}")
-    except Exception as e:
-        logger.error(f"LLM调用失败: {e}")
-        return {"error": True, "code": "LLM_ERROR", "message": "AI服务暂时不可用，请稍后重试"}
 
-    # 2. 校验SQL
-    if not validate_sql(sql):
-        logger.warning(f"SQL校验失败: {sql}")
-        try:
-            fix_messages = _build_llm_messages(
-                message,
-                history,
-                "上一次生成的SQL不合规。请重新生成一条安全的SELECT查询。只使用dws库和bigdata.v_ws_salesflow_ex表。只输出SQL，不要解释。",
-            )
-            fix_messages.append({"role": "system", "content": f"不合规SQL：{sql}"})
-            response = client.chat.completions.create(model=QWEN_MODEL, messages=fix_messages, temperature=0, max_tokens=2500)
-            sql = _clean_sql_response(response.choices[0].message.content)
-            if not validate_sql(sql):
-                return {"error": True, "code": "SQL_FAILED", "message": "无法生成合规的查询语句，请换个方式描述您的问题"}
-        except Exception:
-            return {"error": True, "code": "SQL_FAILED", "message": "无法生成合规的查询语句，请换个方式描述您的问题"}
+def _generate_sql_with_fix(message: str, history: list[dict]) -> str:
+    """生成 SQL 并在校验失败时尝试修复，失败抛 ChatError"""
+    sql = _generate_sql(message, history)
+    logger.info(f"用户问题: {message}")
+    logger.info(f"生成SQL: {sql}")
+    if validate_sql(sql):
+        return sql
+    logger.warning(f"SQL校验失败: {sql}")
+    fix_messages = _build_llm_messages(
+        message,
+        history,
+        "上一次生成的SQL不合规。请重新生成一条安全的SELECT查询。只使用dws库和bigdata.v_ws_salesflow_ex表。只输出SQL，不要解释。",
+    )
+    fix_messages.append({"role": "system", "content": f"不合规SQL：{sql}"})
+    response = client.chat.completions.create(model=QWEN_MODEL, messages=fix_messages, temperature=0, max_tokens=2500)
+    fixed_sql = _clean_sql_response(response.choices[0].message.content)
+    if not validate_sql(fixed_sql):
+        raise ChatError("SQL_FAILED", "无法生成合规的查询语句，请换个方式描述您的问题")
+    return fixed_sql
 
-    # 3. 执行SQL
+
+def _execute_query_with_retry(message: str, history: list[dict], sql: str) -> tuple[str, dict]:
+    """执行查询，周报空结果时自动重试日表。超时抛 ChatError(SQL_TIMEOUT)，失败抛 ChatError(SQL_FAILED)"""
     try:
         table_data = execute_query(sql)
         logger.info(f"查询结果: {len(table_data['rows'])}行, 列: {table_data['columns']}")
     except Exception as e:
         error_msg = str(e)
         if "max_execution_time" in error_msg.lower() or "timeout" in error_msg.lower():
-            return {"error": True, "code": "SQL_TIMEOUT", "message": "查询超时，请尝试缩小查询范围或指定更具体的条件"}
-        return {"error": True, "code": "SQL_FAILED", "message": "查询执行失败，请换个方式描述您的问题"}
+            raise ChatError("SQL_TIMEOUT", "查询超时，请尝试缩小查询范围或指定更具体的条件") from e
+        raise ChatError("SQL_FAILED", "查询执行失败，请换个方式描述您的问题") from e
 
-    # 3.5 空结果智能重试：如果查周报表返回空，尝试用日表重新查询
     if not table_data["rows"] and "_report_week" in sql:
         logger.info("周报表返回空，尝试用日表重新查询")
         try:
@@ -261,13 +262,67 @@ def chat(message: str, history: list[dict] = None) -> dict:
             if validate_sql(retry_sql):
                 retry_data = execute_query(retry_sql)
                 if retry_data["rows"]:
-                    table_data = retry_data
-                    sql = retry_sql
-                    logger.info(f"重试成功: {len(table_data['rows'])}行")
+                    return retry_sql, retry_data
         except Exception as e:
             logger.warning(f"重试失败: {e}")
 
-    # 4. 生成总结
+    return sql, table_data
+
+
+def _stream_summary_chunks(message: str, table_data: dict, history: list[dict] | None = None):
+    """流式生成总结，yield 文本片段。空结果或 LLM 无输出时 yield 兜底文案。"""
+    if not table_data["rows"]:
+        yield "查询结果为空，没有找到匹配的数据。"
+        return
+
+    history = history or []
+    header = " | ".join(table_data["columns"])
+    rows_text = "\n".join([" | ".join(row) for row in table_data["rows"][:20]])
+    data_text = f"{header}\n{rows_text}"
+    history_text = "\n".join([f"{item['role']}: {item['content']}" for item in history[-6:]]) or "无"
+
+    stream = client.chat.completions.create(
+        model=QWEN_MODEL,
+        messages=[
+            {"role": "system", "content": "你是考试宝典的数据分析助手。用户问了一个数据问题，下面是查询结果。请用简洁的中文（2-3句话）回答用户的问题：先给出核心数据，再补一句趋势判断或简短洞察。若有环比、同比、趋势字段，优先点出变化。如果结果里没有环比、同比、趋势或可比较字段，不要推断趋势、原因或业务影响，只做保守表述。不要空话。"},
+            {"role": "user", "content": f"最近对话上下文：\n{history_text}\n\n当前问题：{message}\n\n查询结果：\n{data_text}\n\n请输出：核心结论 + 简短洞察。"},
+        ],
+        temperature=0.3,
+        max_tokens=220,
+        stream=True,
+    )
+    emitted = False
+    for chunk in stream:
+        text = chunk.choices[0].delta.content if chunk.choices and chunk.choices[0].delta.content else ""
+        if text:
+            emitted = True
+            yield text
+    if not emitted:
+        yield "查询完成，请查看下方数据表格。"
+
+
+def chat(message: str, history: list[dict] = None) -> dict:
+    """对话查询主函数（同步接口）。"""
+    if history is None:
+        history = []
+
+    validation_error = _validate_input(message)
+    if validation_error:
+        return validation_error
+
+    try:
+        sql = _generate_sql_with_fix(message, history)
+    except ChatError as e:
+        return {"error": True, "code": e.code, "message": str(e)}
+    except Exception as e:
+        logger.error(f"LLM调用失败: {e}")
+        return {"error": True, "code": "LLM_ERROR", "message": "AI服务暂时不可用，请稍后重试"}
+
+    try:
+        sql, table_data = _execute_query_with_retry(message, history, sql)
+    except ChatError as e:
+        return {"error": True, "code": e.code, "message": str(e)}
+
     try:
         answer = _summarize_result(message, table_data, history)
     except Exception:

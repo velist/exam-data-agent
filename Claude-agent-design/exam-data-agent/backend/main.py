@@ -3,6 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from services.chat import chat
+from services.chat_stream import stream_chat_events
 from services.report import get_weekly_report, get_monthly_report
 from services.insight import stream_insight
 
@@ -25,6 +26,15 @@ class ChatRequest(BaseModel):
 @app.post("/api/chat")
 def api_chat(req: ChatRequest):
     return chat(req.message, req.history)
+
+
+@app.post("/api/chat/stream")
+def api_chat_stream(req: ChatRequest):
+    return StreamingResponse(
+        stream_chat_events(req.message, req.history),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
 
 
 @app.get("/api/report/weekly")
