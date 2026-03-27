@@ -1,32 +1,32 @@
 @echo off
 chcp 65001 >nul
 echo ============================================
-echo   考试宝典数据助手 - 一键启动
+echo   Exam Data Agent - Starting...
 echo ============================================
 echo.
 
-:: 获取脚本所在目录
+:: Get script directory
 set "BASE_DIR=%~dp0"
 
-:: 构建前端
-echo [1/2] 构建前端...
+:: Build frontend
+echo [1/2] Building frontend...
 cd /d "%BASE_DIR%frontend"
 call npm run build
 if errorlevel 1 (
-    echo 前端构建失败！
+    echo Frontend build failed!
     pause
     exit /b 1
 )
 
-:: 启动服务
-echo [2/2] 启动服务 (port 8000)...
+:: Start backend server
+echo [2/2] Starting server (port 8230)...
 cd /d "%BASE_DIR%backend"
 
 echo.
 echo ============================================
-echo   访问地址: http://localhost:8000
+echo   URL: http://localhost:8230
 echo ============================================
 echo.
 
-python -m uvicorn main:app --host 0.0.0.0 --port 8000
+python -m uvicorn main:app --host 0.0.0.0 --port 8230
 pause

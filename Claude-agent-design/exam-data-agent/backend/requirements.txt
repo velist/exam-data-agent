@@ -7,3 +7,4 @@ openai>=1.60.0
 sqlparse==0.5.1
 python-dotenv==1.0.1
 sse-starlette==2.1.0
+websockets>=12.0

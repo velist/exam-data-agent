@@ -1,7 +1,7 @@
 import os
 from pathlib import Path
 from contextlib import asynccontextmanager
-from fastapi import FastAPI, Query
+from fastapi import FastAPI, Query, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
@@ -76,6 +76,16 @@ async def api_insight_stream(
 @app.get("/api/health")
 def health():
     return {"status": "ok"}
+
+
+@app.websocket("/api/asr")
+async def api_asr(ws: WebSocket):
+    await ws.accept()
+    try:
+        from services.asr_proxy import proxy_asr
+        await proxy_asr(ws)
+    except WebSocketDisconnect:
+        pass
 
 
 # --- 前端静态文件 (SPA) ---

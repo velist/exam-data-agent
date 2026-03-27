@@ -1,0 +1,12 @@
+# Cloudflare Pages 配置
+# 部署命令: npx wrangler pages deploy frontend/dist --project-name kaobao-data-assistant
+# 或通过 GitHub 集成自动部署
+
+name = "kaobao-data-assistant"
+compatibility_date = "2026-03-27"
+
+# CF Pages 通过 GitHub 集成自动构建
+# 构建配置在 CF Dashboard 中设置:
+#   构建命令: cd frontend && npm install && npm run build
+#   输出目录: frontend/dist
+#   根目录: /

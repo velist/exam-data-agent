@@ -240,9 +240,16 @@ def _generate_sql_with_fix(message: str, history: list[dict]) -> str:
 
 def _execute_query_with_retry(message: str, history: list[dict], sql: str) -> tuple[str, dict]:
     """执行查询，周报空结果时自动重试日表。超时抛 ChatError(SQL_TIMEOUT)，失败抛 ChatError(SQL_FAILED)"""
+    from services.query_cache import get_cached_result, set_cached_result
+
+    cached = get_cached_result(sql)
+    if cached is not None:
+        return sql, cached
+
     try:
         table_data = execute_query(sql)
         logger.info(f"查询结果: {len(table_data['rows'])}行, 列: {table_data['columns']}")
+        set_cached_result(sql, table_data)
     except Exception as e:
         error_msg = str(e)
         if "max_execution_time" in error_msg.lower() or "timeout" in error_msg.lower():

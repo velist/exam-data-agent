@@ -1,5 +1,33 @@
 const BASE_URL = import.meta.env.VITE_API_URL || "";
 
+/**
+ * 静态模式：当没有配置后端 API 地址时（如 CF Pages 部署），
+ * 从 /cache/ 目录读取预生成的 JSON 缓存。
+ */
+const IS_STATIC = typeof window !== "undefined" && !import.meta.env.VITE_API_URL && window.location.hostname !== "localhost";
+
+/** 尝试从静态缓存获取查询结果（用于 CF Pages 纯前端部署） */
+async function tryStaticCache(sql: string): Promise<{ columns: string[]; rows: string[][] } | null> {
+  if (!IS_STATIC) return null;
+  try {
+    // hash SQL to match cache filename
+    const normalized = sql.replace(/\s+/g, " ").trim().toUpperCase();
+    const encoder = new TextEncoder();
+    const hashBuffer = await crypto.subtle.digest("SHA-256", encoder.encode(normalized));
+    const hashArray = Array.from(new Uint8Array(hashBuffer));
+    const key = hashArray.map((b) => b.toString(16).padStart(2, "0")).join("").slice(0, 16);
+
+    const res = await fetch(`/cache/${key}.json`);
+    if (!res.ok) return null;
+    const data = await res.json();
+    return data.result || null;
+  } catch {
+    return null;
+  }
+}
+
+export { IS_STATIC, tryStaticCache };
+
 export interface ChatResponse {
   answer?: string;
   table?: { columns: string[]; rows: string[][] };

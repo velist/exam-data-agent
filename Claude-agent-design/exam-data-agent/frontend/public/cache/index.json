@@ -1,0 +1,7 @@
+[
+  {
+    "key": "e94c877688bbc034",
+    "sql": "SELECT SUBSTRING(销售日期,1,7) AS 月份, SUM(售价) AS 销售总额 FROM bigdata.v_ws_salesflow_ex WHERE SUBSTRING(销售日期,1,7) = '2026-02' AND 销售部门名称 = 'APP直充' GROUP BY SUBSTRING(销售日期,1,7)",
+    "ts": 1774614298.2532206
+  }
+]

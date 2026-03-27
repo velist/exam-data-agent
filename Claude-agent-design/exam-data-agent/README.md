@@ -1,4 +1,4 @@
-# 考试宝典数据助手
+# 项目基础指南 — 考试宝典数据助手
 
 基于自然语言查询的数据分析 Agent，支持对话查数、追问、周报/月报生成与 AI 洞察。
 
@@ -91,16 +91,6 @@ status(understanding) → status(generating_sql) → status(querying)
 - 占位消息用稳定 ID 定位（非数组下标），防止并发提问串改
 - 首帧前失败自动降级同步接口，首帧后失败保留已有内容
 
-**异常映射（done/error 互斥）：**
-
-| 场景 | 行为 |
-|------|------|
-| SQL 校验失败 | `error(SQL_FAILED)` |
-| 查询超时 | `error(SQL_TIMEOUT)` |
-| LLM 不可用 | `error(LLM_ERROR)` |
-| 表格成功但总结失败 | 兜底 `answer_chunk` + `done`（不发 error） |
-| 0 行结果 | 仍发 `table(rows=[])` + 总结 |
-
 ### 4. 周报/月报
 
 固定模板报告，5 个板块：用户增长、活跃、付费转化、留存、行为。
@@ -108,23 +98,83 @@ status(understanding) → status(generating_sql) → status(querying)
 **关键文件：**
 - `backend/services/report.py` — 报告数据组装
 - `backend/services/report_cache.py` — 启动时缓存全部 dws 表到内存
-- `backend/sql_templates/*.sql` — 5 个报告查询模板（现已改为 Python 侧从缓存过滤）
 - `backend/services/insight.py` — 基于报告数据调 LLM 流式生成洞察
 
-**缓存机制：** 启动时从 DB 拉全量数据到内存 + 写磁盘 JSON。下次启动先读磁盘（秒级就绪），后台线程异步刷新。报告接口从 30s+ 降到 <1ms。
+### 5. 组件样式系统
 
-### 5. 前端页面
+前端聊天气泡支持丰富的数据展示组件：
 
-| 页面 | 路径 | 文件 |
+| 组件 | 说明 | 文件 |
 |------|------|------|
-| 聊天 | `/` | `pages/Chat.tsx` |
-| 报告 | `/report?type=weekly\|monthly` | `pages/Report.tsx` |
+| 数据表格 | Ant Design Table + 数字高亮 + 交替行 + 趋势指标 | `ChatBubble.tsx` |
+| 自动图表 | Canvas 折线图/柱状图，从表格数据自动生成 | `SimpleChart.tsx` |
+| 洞察文本 | 数字自动蓝色高亮，行高 1.8 可读排版 | `ChatBubble.tsx` |
 
-**组件：**
-- `ChatBubble.tsx` — 渲染顺序：状态 → 表格 → 文本 → 错误
-- `MetricCard.tsx` — KPI 卡片（值 + 环比 + 同比）
-- `TrendChart.tsx` — ECharts 折线图
-- `InsightText.tsx` — 流式 Markdown 洞察
+样式参考：`考宝1.2-组件预览.html`，设计规范：`考宝1.2-设计规范.md`
+
+## 数据缓存策略
+
+### 查询结果缓存（1 年有效期）
+
+后端查询结果按 SQL 哈希缓存为 JSON 文件，避免重复查库：
+
+```
+backend/data/query_cache/{sha256_16}.json
+格式: { "ts": timestamp, "sql": "...", "result": { "columns": [...], "rows": [...] } }
+```
+
+**规则：**
+- 含时间关键词（`本周`/`今天`/`CURDATE`等）的查询不缓存
+- 有效期 1 年，过期自动清理
+- 缓存文件：`backend/services/query_cache.py`
+
+### 静态部署缓存同步
+
+将缓存导出到前端静态目录，供 CF Pages 纯前端部署使用：
+
+```bash
+python scripts/export_cache.py
+# → frontend/public/cache/*.json + index.json
+```
+
+前端在静态模式下（无后端）自动从 `/cache/` 读取预生成数据。
+
+## 部署
+
+### 本地开发
+
+```bash
+start.bat   # 构建前端 + 启动 FastAPI (localhost:8000)
+```
+
+### Cloudflare Pages（纯静态部署）
+
+适用场景：不需要实时后端，数据通过缓存 JSON 预生成。
+
+**步骤：**
+
+1. 本地运行后端，执行常用查询积累缓存
+2. 导出缓存：`python scripts/export_cache.py`
+3. 推送到 GitHub
+4. 在 CF Pages Dashboard 连接 GitHub 仓库
+   - 构建命令：`cd frontend && npm install && npm run build`
+   - 输出目录：`frontend/dist`
+5. 自动部署，缓存 JSON 作为静态资源一并发布
+
+**环境切换：**
+- 开发模式（有后端）：直接访问 API，实时查库
+- 静态模式（CF Pages）：从 `/cache/` 读取预生成 JSON，未缓存的查询提示"数据暂未收录"
+
+**配置文件：** `wrangler.toml`
+
+### Docker + VPS（完整功能部署）
+
+如需实时查库功能，可通过 Docker 部署完整后端：
+
+```bash
+docker build -t kaobao-agent .
+docker run -p 8230:8230 --env-file backend/.env kaobao-agent
+```
 
 ## 数据库表
 
@@ -157,6 +207,9 @@ cd frontend && npm test
 ```
 exam-data-agent/
 ├── start.bat                    # 一键启动
+├── wrangler.toml                # CF Pages 部署配置
+├── scripts/
+│   └── export_cache.py          # 缓存导出到前端静态目录
 ├── backend/
 │   ├── main.py                  # FastAPI 入口 + 静态文件挂载
 │   ├── config.py                # 环境变量
@@ -165,26 +218,30 @@ exam-data-agent/
 │   ├── services/
 │   │   ├── chat.py              # 聊天主链路（共享阶段函数）
 │   │   ├── chat_stream.py       # SSE 事件编排
+│   │   ├── query_cache.py       # SQL 查询结果缓存（1年JSON）
 │   │   ├── report.py            # 周报/月报组装
 │   │   ├── report_cache.py      # 报告数据缓存
 │   │   └── insight.py           # AI 洞察流式生成
-│   ├── prompts/
-│   │   ├── nl2sql.txt           # NL2SQL 提示词
-│   │   └── insight.txt          # 洞察分析提示词
-│   ├── sql_templates/           # 报告 SQL 模板
-│   ├── data/report_cache.json   # 磁盘缓存
+│   ├── prompts/                 # LLM 提示词
+│   ├── data/
+│   │   ├── report_cache.json    # 报告磁盘缓存
+│   │   └── query_cache/         # 查询结果缓存目录
 │   └── tests/                   # pytest 测试
 └── frontend/
     ├── src/
-    │   ├── api.ts               # API 层（sendChat/streamChat/streamInsight）
+    │   ├── api.ts               # API 层（sendChat/streamChat/静态缓存）
     │   ├── pages/
-    │   │   ├── Chat.tsx         # 聊天页
+    │   │   ├── Chat.tsx         # 聊天页（落地屏 + 聊天屏）
     │   │   ├── Report.tsx       # 报告页
     │   │   └── chatMessageUtils.ts  # 消息状态纯函数
-    │   └── components/
-    │       ├── ChatBubble.tsx   # 聊天气泡
-    │       ├── MetricCard.tsx   # KPI 卡片
-    │       ├── TrendChart.tsx   # 趋势图
-    │       └── InsightText.tsx  # AI 洞察
+    │   ├── components/
+    │   │   ├── ChatBubble.tsx   # 聊天气泡（表格+图表+洞察）
+    │   │   ├── SimpleChart.tsx  # Canvas 图表（折线/柱状）
+    │   │   ├── MetricCard.tsx   # KPI 卡片
+    │   │   ├── TrendChart.tsx   # 趋势图
+    │   │   └── InsightText.tsx  # AI 洞察
+    │   └── styles/
+    │       └── chat.css         # 聊天页完整样式
+    ├── public/cache/            # 导出的静态缓存（CF Pages 用）
     └── dist/                    # 构建产物（被 FastAPI 挂载）
 ```
