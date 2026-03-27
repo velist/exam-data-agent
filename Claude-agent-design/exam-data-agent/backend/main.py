@@ -1,8 +1,13 @@
+import os
+from pathlib import Path
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, Query
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import StreamingResponse
+from fastapi.responses import StreamingResponse, FileResponse
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
+
+DIST_DIR = Path(__file__).resolve().parent.parent / "frontend" / "dist"
 from services.chat import chat
 from services.chat_stream import stream_chat_events
 from services.report import get_weekly_report, get_monthly_report
@@ -71,3 +76,17 @@ async def api_insight_stream(
 @app.get("/api/health")
 def health():
     return {"status": "ok"}
+
+
+# --- 前端静态文件 (SPA) ---
+if DIST_DIR.exists():
+    app.mount("/assets", StaticFiles(directory=str(DIST_DIR / "assets")), name="static")
+
+    @app.get("/")
+    async def serve_index():
+        return FileResponse(str(DIST_DIR / "index.html"))
+
+    @app.get("/{full_path:path}")
+    async def serve_spa(full_path: str):
+        """SPA fallback: 非 /api 路径全部返回 index.html"""
+        return FileResponse(str(DIST_DIR / "index.html"))
