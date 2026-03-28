@@ -180,6 +180,26 @@ def _generate_sql(message: str, history: list[dict]) -> str:
     return _clean_sql_response(response.choices[0].message.content)
 
 
+CHAT_SUMMARY_SYSTEM_PROMPT = (
+    "你是「考试宝典」的高级数据分析师。考试宝典是一款面向医学考试的在线教育APP，"
+    "核心功能包括刷题练习、模拟考试、视频课程、AI答疑，用户群体为备考执业医师/护师/药师等医学类职称考试的学员。\n\n"
+    "用户问了一个数据问题，下面是查询结果。请按以下要求回答：\n"
+    "1. **核心数据**（1句）：直接回答用户的问题，给出关键数字\n"
+    "2. **趋势判断**（1句）：若有环比/同比/趋势数据，点出变化方向和幅度；若无可比数据则跳过\n"
+    "3. **业务洞察**（1句，可选）：结合考试宝典的产品场景给出简短的解读或行动建议，例如：\n"
+    "   - 注册下降 → 关注渠道投放效果或应用商店评分变化\n"
+    "   - 付费转化率低 → 检查免费体验到付费的承接路径，或首购门槛是否过高\n"
+    "   - 刷题参与率下降 → 考虑题库内容更新或刷题激励机制\n"
+    "   - 留存率下滑 → 关注新用户首日引导是否引导完成首次刷题/看课\n"
+    "   - 客服退款增加 → 关注退款原因是内容不满意还是误操作\n"
+    "   - 销售额下降 → 区分是客服/APP直充/合作商哪个渠道的问题\n\n"
+    "规则：\n"
+    "- 总共不超过3-4句话，简洁专业\n"
+    "- 若数据中没有环比/同比/趋势字段，不要编造趋势或猜测原因\n"
+    "- 不要空话套话，每句话都要有信息量"
+)
+
+
 def _summarize_result(message: str, table_data: dict, history: list[dict] | None = None) -> str:
     """调用千问对查询结果生成简短总结和洞察"""
     if not table_data["rows"]:
@@ -194,11 +214,11 @@ def _summarize_result(message: str, table_data: dict, history: list[dict] | None
     response = client.chat.completions.create(
         model=QWEN_MODEL,
         messages=[
-            {"role": "system", "content": "你是考试宝典的数据分析助手。用户问了一个数据问题，下面是查询结果。请用简洁的中文（2-3句话）回答用户的问题：先给出核心数据，再补一句趋势判断或简短洞察。若有环比、同比、趋势字段，优先点出变化。如果结果里没有环比、同比、趋势或可比较字段，不要推断趋势、原因或业务影响，只做保守表述。不要空话。"},
-            {"role": "user", "content": f"最近对话上下文：\n{history_text}\n\n当前问题：{message}\n\n查询结果：\n{data_text}\n\n请输出：核心结论 + 简短洞察。"},
+            {"role": "system", "content": CHAT_SUMMARY_SYSTEM_PROMPT},
+            {"role": "user", "content": f"最近对话上下文：\n{history_text}\n\n当前问题：{message}\n\n查询结果：\n{data_text}\n\n请输出：核心结论 + 趋势判断 + 业务洞察。"},
         ],
         temperature=0.3,
-        max_tokens=220,
+        max_tokens=300,
     )
     return response.choices[0].message.content.strip()
 
@@ -228,7 +248,7 @@ def _generate_sql_with_fix(message: str, history: list[dict]) -> str:
     fix_messages = _build_llm_messages(
         message,
         history,
-        "上一次生成的SQL不合规。请重新生成一条安全的SELECT查询。只使用dws库和bigdata.v_ws_salesflow_ex表。只输出SQL，不要解释。",
+        "上一次生成的SQL不合规。请重新生成一条安全的SELECT查询。只使用dws库、bigdata.v_ws_salesflow_ex、bigdata.v_ws_vnsalesrank、bigdata.v_ksb_users_ex、bigdata.v_ksb_userclick表。只输出SQL，不要解释。",
     )
     fix_messages.append({"role": "system", "content": f"不合规SQL：{sql}"})
     response = client.chat.completions.create(model=QWEN_MODEL, messages=fix_messages, temperature=0, max_tokens=2500)
@@ -291,11 +311,11 @@ def _stream_summary_chunks(message: str, table_data: dict, history: list[dict] |
     stream = client.chat.completions.create(
         model=QWEN_MODEL,
         messages=[
-            {"role": "system", "content": "你是考试宝典的数据分析助手。用户问了一个数据问题，下面是查询结果。请用简洁的中文（2-3句话）回答用户的问题：先给出核心数据，再补一句趋势判断或简短洞察。若有环比、同比、趋势字段，优先点出变化。如果结果里没有环比、同比、趋势或可比较字段，不要推断趋势、原因或业务影响，只做保守表述。不要空话。"},
-            {"role": "user", "content": f"最近对话上下文：\n{history_text}\n\n当前问题：{message}\n\n查询结果：\n{data_text}\n\n请输出：核心结论 + 简短洞察。"},
+            {"role": "system", "content": CHAT_SUMMARY_SYSTEM_PROMPT},
+            {"role": "user", "content": f"最近对话上下文：\n{history_text}\n\n当前问题：{message}\n\n查询结果：\n{data_text}\n\n请输出：核心结论 + 趋势判断 + 业务洞察。"},
         ],
         temperature=0.3,
-        max_tokens=220,
+        max_tokens=300,
         stream=True,
     )
     emitted = False

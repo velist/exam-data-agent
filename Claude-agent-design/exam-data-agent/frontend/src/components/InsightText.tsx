@@ -12,13 +12,18 @@ interface Props {
 export default function InsightText({ type, date }: Props) {
   const [text, setText] = useState("");
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
 
   useEffect(() => {
     setText("");
+    setError("");
     setLoading(true);
-    const cancel = streamInsight(type, date,
+    const cancel = streamInsight(
+      type,
+      date,
       (chunk) => setText((prev) => prev + chunk),
       () => setLoading(false),
+      (msg) => setError(msg),
     );
     return cancel;
   }, [type, date]);
@@ -26,6 +31,7 @@ export default function InsightText({ type, date }: Props) {
   return (
     <Card title={<><BulbOutlined /> AI 分析洞察</>} style={{ marginTop: 24 }}>
       {loading && !text && <Spin tip="正在分析数据..." />}
+      {error && !text && <div style={{ color: "#ff4d4f" }}>{error}</div>}
       <div className="insight-markdown">
         <ReactMarkdown>{text}</ReactMarkdown>
         {loading && text && <span style={{ animation: "blink 1s step-end infinite" }}>|</span>}

@@ -42,6 +42,13 @@ export interface ReportResponse {
 }
 
 export async function sendChat(message: string, history: { role: string; content: string }[]): Promise<ChatResponse> {
+  if (IS_STATIC) {
+    return {
+      error: true,
+      code: "STATIC_MODE",
+      message: "当前为静态部署模式，实时对话需要后端服务支持。请查看周报/月报获取数据分析。",
+    };
+  }
   const res = await fetch(`${BASE_URL}/api/chat`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -90,6 +97,16 @@ export async function streamChat(
   handlers: { onEvent: (event: ChatStreamEvent) => void },
   options?: { signal?: AbortSignal },
 ): Promise<void> {
+  // 静态模式下没有后端 API，直接返回提示
+  if (IS_STATIC) {
+    handlers.onEvent({
+      type: "error",
+      code: "STATIC_MODE",
+      message: "当前为静态部署模式，实时对话需要后端服务支持。请查看周报/月报获取数据分析。",
+    });
+    return;
+  }
+
   let res: Response;
   try {
     res = await fetch(`${BASE_URL}/api/chat/stream`, {
@@ -150,7 +167,12 @@ export async function streamChat(
 
 // --- 报告洞察流式 API ---
 
-export function streamInsight(type: string, date: string, onChunk: (text: string) => void, onDone: () => void) {
+export function streamInsight(type: string, date: string, onChunk: (text: string) => void, onDone: () => void, onError?: (msg: string) => void) {
+  if (IS_STATIC) {
+    onError?.("当前为静态部署模式，洞察分析需要后端服务支持。");
+    onDone();
+    return () => {};
+  }
   const url = `${BASE_URL}/api/insight/stream?type=${type}&date=${date}`;
   const eventSource = new EventSource(url);
 
@@ -168,6 +190,7 @@ export function streamInsight(type: string, date: string, onChunk: (text: string
 
   eventSource.onerror = () => {
     eventSource.close();
+    onError?.("洞察分析加载失败，请稍后重试。");
     onDone();
   };
 

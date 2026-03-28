@@ -8,7 +8,10 @@
 - **用户留存**：留存率、次日留存、周留存 → 查 dws.dws_retention_user_report_week
 - **用户行为**：答题、模考、课程、播放进度、刷题量 → 查 dws.dws_user_behavior_report_week
 - **销售收入**：销售额、直充、销售金额 → 查 bigdata.v_ws_salesflow_ex
+- **业绩统计/部门业绩**：部门销售排名、渠道业绩、产品体系业绩 → 查 bigdata.v_ws_vnsalesrank
 - **用户反馈/客服**：客服、投诉、反馈、评价、问题类型、进线量 → 查 dws.dws_customer_service（客服进线数据）
+- **用户画像/渠道分析**：注册渠道、用户类型分布、职称类别、用户来源 → 查 bigdata.v_ksb_users_ex
+- **用户行为埋点**：页面点击、按钮点击、功能使用率、AI答疑点击 → 查 bigdata.v_ksb_userclick
 - **综合概览**：最近情况、整体怎么样、数据怎么样 → 查 dws.dws_active_user_report_week 最新一行（给出注册+活跃+有效活跃）
 - **异常/评价类**："有什么异常吗""好不好""还行吗""有没有好转" → 同综合概览，查最新2行数据做环比对比
 - **关键指标汇总**："关键指标""核心指标""所有指标" → 查最新一周的注册+活跃+付费+留存核心数据
@@ -102,6 +105,42 @@
 - solution: 处理意见（客服回复）
 - 注意：退费/退款查询用 question_theme='退款类'，投诉用 question_theme='投诉反馈类' 或 question_type LIKE '%投诉%'
 
+### bigdata.v_ksb_users_ex（用户主表 — 用户画像、渠道分析、注册/活跃统计）
+- 用户ID: 用户唯一标识
+- 代理商代码: 渠道来源标识。官方渠道代码为 ('','888','889','999','772','8001'~'8021','9001'~'9099','ksbd87','857','K001','huaweiK001','Ktk001','885')；其余为合作商渠道。SQL中判断官方渠道用 REGEXP：代理商代码 REGEXP '^800[1-9]$|^80[1-9][0-9]$|^8021$|^900[1-9]$|^90[1-9][0-9]$|^909[0-9]$' 或 IN ('','888','889','999','772','857','885','ksbd87','K001','huaweiK001','Ktk001')
+- 注册日期: 用户注册时间（datetime，如 '2026-01-15 10:30:00'）
+- 最新登录日期: 最后一次登录时间（datetime）
+- 注册渠道: 注册来源标识（含smp为网盟渠道，需排除）
+- 用户最新手机型号: 如 'iPhone 15 Pro', 'HUAWEI Mate 60'
+- 科目名称: 用户当前学习的科目
+- 用户当前职称类别: 如 '初级护师', '主治医师', '执业药师'（'其他'为无效用户需排除）
+- 当前用户类型: '注册用户'/'付费用户'/'过期用户'
+- 用户归属省份, 用户归属城市: 地理位置
+- 注意：统计注册量时需排除 注册渠道 LIKE '%smp%' 和 用户当前职称类别='其他'
+
+### bigdata.v_ws_vnsalesrank（销售排名表 — 部门业绩、产品业绩、渠道业绩对比）
+- 代理渠道: 销售部门/渠道名称，如 'APP推广运营部'（APP直充）, '教学督导组'/'教学督导2组'/'教务组'/'咨询导学组'/'回访组'（客服）, 其余为渠道业务
+- 日期: 日期字符串（如 '2026-03-15'）
+- 大类: 产品大类（'其他'为无效数据需排除）
+- 班次简称: 产品名称
+- 结算分类: '考试宝典'/'医学教育' 为有效分类
+- 销量: 订单数量
+- 销售额: 订单金额
+- 注意：统计时需排除 大类='其他'，且 结算分类 IN ('考试宝典','医学教育')
+
+### bigdata.v_ksb_userclick（用户点击行为 — 功能使用率、页面访问量、按钮点击量）
+- USERID: 用户ID
+- PAGENUM: 页面编号（105=答题页/AI解析页）
+- BTNNUM: 按钮编号（440=视频解析按钮, 441=AI答疑按钮）
+- PAGENAME: 页面名称
+- BTNNAME: 按钮名称
+- CREATETIME: 点击时间（datetime）
+- APPID: 科目APP标识
+- USERTYPE: 用户类型（1=正常用户）
+- AGENTCODE: 渠道代码（888=官方渠道）
+- CLIENTTYPE: 客户端类型（排除 'web%' 为APP端）
+- 注意：统计APP端数据时需 USERTYPE=1 AND AGENTCODE=888 AND CLIENTTYPE NOT LIKE 'web%'
+
 ## 业务规则
 - 周报表的业务周定义：周六起始，周五结束（但用户口中的"本周/上周"指自然周周一~周日）
 - 百分比字段存储时带%号，计算时需REPLACE去掉%再转数值
@@ -162,3 +201,24 @@ SQL: SELECT stat_date, daily_active_count AS DAU FROM dws.dws_user_daily_quiz_st
 
 用户: 按周分别多少（上文查的是3月销售）
 SQL: SELECT WEEK(销售日期) AS 周, MIN(销售日期) AS 起始日, MAX(销售日期) AS 截止日, SUM(售价) AS 销售额 FROM bigdata.v_ws_salesflow_ex WHERE SUBSTRING(销售日期,1,7) = '2026-03' AND 销售部门名称 = 'APP直充' GROUP BY WEEK(销售日期) ORDER BY 周
+
+用户: 3月各部门业绩多少
+SQL: SELECT 代理渠道 AS 部门, SUM(销量) AS 总销量, SUM(销售额) AS 总销售额 FROM bigdata.v_ws_vnsalesrank WHERE 日期 >= '2026-03-01' AND 日期 < '2026-04-01' AND 大类 != '其他' AND 结算分类 IN ('考试宝典','医学教育') GROUP BY 代理渠道 ORDER BY 总销售额 DESC
+
+用户: APP直充业绩
+SQL: SELECT SUM(销量) AS 总销量, SUM(销售额) AS 总销售额 FROM bigdata.v_ws_vnsalesrank WHERE 日期 >= '2026-03-01' AND 日期 < '2026-04-01' AND 代理渠道 LIKE '%APP%' AND 大类 != '其他' AND 结算分类 IN ('考试宝典','医学教育')
+
+用户: 客服业绩
+SQL: SELECT SUM(销量) AS 总销量, SUM(销售额) AS 总销售额 FROM bigdata.v_ws_vnsalesrank WHERE 日期 >= '2026-03-01' AND 日期 < '2026-04-01' AND 代理渠道 IN ('教学督导2组','教学督导组','教务组','咨询导学组','回访组') AND 大类 != '其他' AND 结算分类 IN ('考试宝典','医学教育')
+
+用户: 最近注册用户都是什么渠道的
+SQL: SELECT CASE WHEN 代理商代码 IN ('','888','889','999','772','857','885','ksbd87','K001','huaweiK001','Ktk001') OR 代理商代码 REGEXP '^800[1-9]$|^80[1-9][0-9]$|^8021$|^900[1-9]$|^90[1-9][0-9]$|^909[0-9]$' THEN '官方渠道' ELSE '合作商渠道' END AS 渠道类型, COUNT(DISTINCT 用户ID) AS 注册用户数 FROM bigdata.v_ksb_users_ex WHERE SUBSTR(注册日期,1,10) >= DATE_SUB('{today}', INTERVAL 7 DAY) AND 用户当前职称类别 != '其他' AND 注册渠道 NOT LIKE '%smp%' GROUP BY 渠道类型 ORDER BY 注册用户数 DESC
+
+用户: 用户都学什么科目
+SQL: SELECT 用户当前职称类别 AS 职称类别, COUNT(DISTINCT 用户ID) AS 用户数 FROM bigdata.v_ksb_users_ex WHERE 用户当前职称类别 != '其他' AND 当前用户类型 IN ('注册用户','付费用户') GROUP BY 用户当前职称类别 ORDER BY 用户数 DESC LIMIT 10
+
+用户: AI答疑功能使用情况
+SQL: SELECT DATE(CREATETIME) AS 日期, COUNT(DISTINCT USERID) AS 使用人数, COUNT(*) AS 点击次数 FROM bigdata.v_ksb_userclick WHERE PAGENUM = 105 AND BTNNUM = 441 AND USERTYPE = 1 AND AGENTCODE = 888 AND CLIENTTYPE NOT LIKE 'web%' AND CREATETIME >= DATE_SUB('{today}', INTERVAL 7 DAY) GROUP BY DATE(CREATETIME) ORDER BY 日期
+
+用户: 答题页视频解析点击率
+SQL: SELECT DATE(CREATETIME) AS 日期, COUNT(DISTINCT CASE WHEN BTNNUM = 440 THEN USERID END) AS 视频解析人数, COUNT(DISTINCT USERID) AS 答题页访问人数, CONCAT(ROUND(COUNT(DISTINCT CASE WHEN BTNNUM = 440 THEN USERID END) / COUNT(DISTINCT USERID) * 100, 2), '%') AS 点击率 FROM bigdata.v_ksb_userclick WHERE PAGENUM = 105 AND USERTYPE = 1 AND AGENTCODE = 888 AND CLIENTTYPE NOT LIKE 'web%' AND CREATETIME >= DATE_SUB('{today}', INTERVAL 7 DAY) GROUP BY DATE(CREATETIME) ORDER BY 日期

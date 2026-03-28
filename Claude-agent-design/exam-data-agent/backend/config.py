@@ -28,4 +28,7 @@ ALLOWED_TABLES = [
     "dws.dws_user_behavior_report_week",
     "dws.dws_customer_service",
     "bigdata.v_ws_salesflow_ex",
+    "bigdata.v_ksb_users_ex",
+    "bigdata.v_ws_vnsalesrank",
+    "bigdata.v_ksb_userclick",
 ]

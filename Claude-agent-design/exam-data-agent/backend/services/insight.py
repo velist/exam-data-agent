@@ -55,10 +55,10 @@ async def stream_insight(report_type: str, date_str: str):
         model=QWEN_MODEL,
         messages=[
             {"role": "system", "content": prompt},
-            {"role": "user", "content": "请分析以上数据，给出关键发现和业务建议。"},
+            {"role": "user", "content": "请基于以上报告数据，输出数据概览、关键发现和产品建议。重点关注异常变化指标。"},
         ],
         temperature=0.5,
-        max_tokens=1000,
+        max_tokens=1500,
         stream=True,
     )
 

@@ -1,0 +1,4 @@
+# CF Pages SPA 路由
+# /api/* 由 Functions 处理（不需要重定向）
+# 其他非静态资源路径回退到 index.html
+/*  /index.html  200

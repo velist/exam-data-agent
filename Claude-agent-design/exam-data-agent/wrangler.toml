@@ -10,3 +10,10 @@ compatibility_date = "2026-03-27"
 #   构建命令: cd frontend && npm install && npm run build
 #   输出目录: frontend/dist
 #   根目录: /
+#
+# CF Pages Functions:
+#   functions/api/asr.js → /api/asr (ASR WebSocket 代理)
+#   Functions 自动识别 functions/ 目录，无需额外配置
+#
+# 环境变量（在 CF Dashboard → Settings → Environment variables 中配置）:
+#   QWEN_API_KEY = sk-xxx  (阿里百炼千问 API Key，用于 ASR 代理认证)
