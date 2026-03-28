@@ -1,7 +1,7 @@
 import os
 from pathlib import Path
 from contextlib import asynccontextmanager
-from fastapi import FastAPI, Query, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, Query, WebSocket, WebSocketDisconnect, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
@@ -10,7 +10,7 @@ from pydantic import BaseModel
 DIST_DIR = Path(__file__).resolve().parent.parent / "frontend" / "dist"
 from services.chat import chat
 from services.chat_stream import stream_chat_events
-from services.report import get_weekly_report, get_monthly_report
+from services.report import get_weekly_report, get_monthly_report, get_range_report
 from services.report_cache import init_cache
 from services.insight import stream_insight
 
@@ -61,13 +61,26 @@ def api_monthly_report(month: str = Query(..., description="目标月份，如20
     return get_monthly_report(month)
 
 
+@app.get("/api/report/range")
+def api_range_report(
+    start: str = Query(..., description="开始日期，如2026-01-01"),
+    end: str = Query(..., description="结束日期，如2026-03-31"),
+):
+    try:
+        return get_range_report(start, end)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
 @app.get("/api/insight/stream")
 async def api_insight_stream(
-    type: str = Query(..., description="weekly或monthly"),
-    date: str = Query(..., description="日期参数"),
+    type: str = Query(..., description="weekly、monthly或range"),
+    date: str | None = Query(None, description="周报/月报日期参数"),
+    start: str | None = Query(None, description="区间开始日期"),
+    end: str | None = Query(None, description="区间结束日期"),
 ):
     return StreamingResponse(
-        stream_insight(type, date),
+        stream_insight(type, date=date, start=start, end=end),
         media_type="text/event-stream",
         headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
     )

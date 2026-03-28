@@ -211,32 +211,58 @@ def get_weekly_report(date_str: str) -> dict:
 
 def _get_month_weeks(month_str: str) -> list[list[str]]:
     """从缓存中获取某月的所有周 [start_dt, end_dt]"""
+    month_start = datetime.strptime(f"{month_str}-01", "%Y-%m-%d")
+    if month_start.month == 12:
+        next_month_start = datetime(month_start.year + 1, 1, 1)
+    else:
+        next_month_start = datetime(month_start.year, month_start.month + 1, 1)
+    month_end = next_month_start - timedelta(days=1)
+    return _get_intersected_weeks(month_start.strftime("%Y-%m-%d"), month_end.strftime("%Y-%m-%d"))
+
+
+def _parse_date(date_str: str) -> datetime:
+    return datetime.strptime(date_str, "%Y-%m-%d")
+
+
+def _validate_range(start_str: str, end_str: str) -> tuple[datetime, datetime]:
+    start_dt = _parse_date(start_str)
+    end_dt = _parse_date(end_str)
+    if start_dt > end_dt:
+        raise ValueError("开始日期不能晚于结束日期")
+    if (end_dt - start_dt).days > 179:
+        raise ValueError("自定义区间跨度不能超过180天")
+    return start_dt, end_dt
+
+
+def _get_intersected_weeks(start_str: str, end_str: str) -> list[list[str]]:
     data = query_cached("dws_active_user_report_week", order_by="start_dt", order_desc=False)
     if not data["columns"] or not data["rows"]:
         return []
+
+    start_dt, end_dt = _parse_date(start_str), _parse_date(end_str)
     col_idx = {c: i for i, c in enumerate(data["columns"])}
     si, ei = col_idx["start_dt"], col_idx["end_dt"]
     seen = set()
     weeks = []
     for row in data["rows"]:
-        start = row[si]
-        if str(start)[:7] == month_str and start not in seen:
-            seen.add(start)
-            weeks.append([start, row[ei]])
+        week_start = row[si]
+        week_end = row[ei]
+        if week_start in seen:
+            continue
+        week_start_dt = _parse_date(week_start)
+        week_end_dt = _parse_date(week_end)
+        if week_end_dt < start_dt or week_start_dt > end_dt:
+            continue
+        seen.add(week_start)
+        weeks.append([week_start, week_end])
     weeks.sort()
     return weeks
 
 
-def get_monthly_report(month_str: str) -> dict:
-    year, month = map(int, month_str.split("-"))
+def _aggregate_reports(period: dict, weekly_reports: list[dict], prev_reports: list[dict] | None = None) -> dict:
+    if not weekly_reports:
+        return {"period": period, "sections": {}, "weekly_reports": []}
 
-    weeks = _get_month_weeks(month_str)
-    if not weeks:
-        return {"period": {"month": month_str}, "sections": {}, "weekly_reports": []}
-
-    weekly_reports = [get_weekly_report(w[1]) for w in weeks]
-
-    # 月度汇总
     all_sections = {}
     for wr in weekly_reports:
         for section_key, section_data in wr.get("sections", {}).items():
@@ -270,12 +296,7 @@ def get_monthly_report(month_str: str) -> dict:
             trend.append(entry)
         sections[section_key] = {"metrics": metrics, "trend": trend}
 
-    # 月环比
-    prev_month_dt = datetime(year, month, 1) - timedelta(days=1)
-    prev_month_str = prev_month_dt.strftime("%Y-%m")
-    prev_weeks = _get_month_weeks(prev_month_str)
-    if prev_weeks:
-        prev_reports = [get_weekly_report(w[1]) for w in prev_weeks]
+    if prev_reports:
         for section_key in sections:
             for metric_key in sections[section_key]["metrics"]:
                 prev_values = []
@@ -293,4 +314,77 @@ def get_monthly_report(month_str: str) -> dict:
                     except (ValueError, TypeError):
                         pass
 
-    return {"period": {"month": month_str, "weeks": len(weekly_reports)}, "sections": sections, "weekly_reports": weekly_reports}
+    return {"period": period, "sections": sections, "weekly_reports": weekly_reports}
+
+
+def get_monthly_report(month_str: str) -> dict:
+    year, month = map(int, month_str.split("-"))
+
+    weeks = _get_month_weeks(month_str)
+    if not weeks:
+        return {"period": {"month": month_str}, "sections": {}, "weekly_reports": []}
+
+    weekly_reports = [get_weekly_report(w[1]) for w in weeks]
+
+    prev_month_dt = datetime(year, month, 1) - timedelta(days=1)
+    prev_month_str = prev_month_dt.strftime("%Y-%m")
+    prev_weeks = _get_month_weeks(prev_month_str)
+    prev_reports = [get_weekly_report(w[1]) for w in prev_weeks] if prev_weeks else []
+
+    return _aggregate_reports({"month": month_str, "weeks": len(weekly_reports)}, weekly_reports, prev_reports)
+
+
+def get_range_report(start_str: str, end_str: str) -> dict:
+    start_dt, end_dt = _validate_range(start_str, end_str)
+
+    weeks = _get_intersected_weeks(start_str, end_str)
+    if not weeks:
+        return {"period": {"start": start_str, "end": end_str, "weeks": 0}, "sections": {}, "weekly_reports": []}
+
+    weekly_reports = [get_weekly_report(w[1]) for w in weeks]
+
+    span_days = (end_dt - start_dt).days + 1
+    prev_end_dt = start_dt - timedelta(days=1)
+    prev_start_dt = prev_end_dt - timedelta(days=span_days - 1)
+    prev_weeks = _get_intersected_weeks(prev_start_dt.strftime("%Y-%m-%d"), prev_end_dt.strftime("%Y-%m-%d"))
+    prev_reports = [get_weekly_report(w[1]) for w in prev_weeks] if prev_weeks else []
+
+    result = _aggregate_reports({"start": start_str, "end": end_str, "weeks": len(weekly_reports)}, weekly_reports, prev_reports)
+
+    daily_data = query_cached(
+        "dws_user_daily_quiz_stats_day",
+        filters={"stat_date": {"op": "between", "value": [start_str, end_str]}},
+        order_by="stat_date", order_desc=False,
+    )
+    if daily_data["rows"]:
+        col_idx = {c: i for i, c in enumerate(daily_data["columns"])}
+        rows = daily_data["rows"]
+        total_reg, total_act, total_exam = 0, 0, 0
+        trend = []
+        for row in rows:
+            reg = float(row[col_idx["daily_register_count"]] or 0)
+            act = float(row[col_idx["daily_active_count"]] or 0)
+            exam = float(row[col_idx.get("daily_avg_exam", 0)] or 0) if "daily_avg_exam" in col_idx else 0
+            total_reg += reg
+            total_act += act
+            total_exam += exam
+            trend.append({
+                "start": row[col_idx["stat_date"]],
+                "daily_register": row[col_idx["daily_register_count"]],
+                "daily_active": row[col_idx["daily_active_count"]],
+            })
+
+        days = len(rows)
+        active_metrics = result["sections"].get("active", {}).get("metrics", {})
+        result["sections"]["user_growth"] = {
+            "metrics": {
+                "daily_register": {"label": "区间日均注册", "value": round(total_reg / days), "wow": active_metrics.get("reg_users", {}).get("wow", "N/A"), "yoy": active_metrics.get("reg_users", {}).get("yoy", "N/A")},
+                "daily_active": {"label": "区间日均活跃", "value": round(total_act / days), "wow": active_metrics.get("active_users", {}).get("wow", "N/A"), "yoy": active_metrics.get("active_users", {}).get("yoy", "N/A")},
+                "daily_avg_exam": {"label": "区间人均刷题", "value": round(total_exam / days, 2), "wow": "N/A", "yoy": "N/A"},
+            },
+            "trend": trend,
+        }
+    else:
+        result["sections"]["user_growth"] = {"metrics": {}, "trend": []}
+
+    return result

@@ -1,8 +1,9 @@
 import os
 import json
+import asyncio
 from openai import OpenAI
 from config import QWEN_API_KEY, QWEN_BASE_URL, QWEN_MODEL
-from services.report import get_weekly_report, get_monthly_report
+from services.report import get_weekly_report, get_monthly_report, get_range_report
 
 PROMPTS_DIR = os.path.join(os.path.dirname(__file__), '..', 'prompts')
 
@@ -15,11 +16,13 @@ def _load_prompt(name: str) -> str:
         return f.read()
 
 
-def _format_report_for_prompt(report: dict) -> str:
+def _format_report_for_prompt(report: dict, report_type: str) -> str:
     lines = []
     period = report.get("period", {})
-    if "month" in period:
-        lines.append(f"报告类型: 月报 ({period['month']})")
+    if report_type == "monthly":
+        lines.append(f"报告类型: 月报 ({period.get('month', '')})")
+    elif report_type == "range":
+        lines.append(f"报告类型: 区间报表 ({period.get('start', '')} ~ {period.get('end', '')})")
     else:
         lines.append(f"报告类型: 周报 ({period.get('start', '')} ~ {period.get('end', '')})")
 
@@ -37,19 +40,43 @@ def _format_report_for_prompt(report: dict) -> str:
     return "\n".join(lines)
 
 
-async def stream_insight(report_type: str, date_str: str):
+async def stream_insight(report_type: str, date: str | None = None, start: str | None = None, end: str | None = None):
     """SSE流式生成洞察分析"""
+    yield f"data: {json.dumps({'type': 'status', 'stage': 'querying', 'text': '正在查询数据...'}, ensure_ascii=False)}\n\n"
+    await asyncio.sleep(0)
+
     if report_type == "weekly":
-        report = get_weekly_report(date_str)
+        if not date:
+            yield f"data: {json.dumps({'text': '缺少周报日期参数'}, ensure_ascii=False)}\n\n"
+            return
+        report = get_weekly_report(date)
     elif report_type == "monthly":
-        report = get_monthly_report(date_str)
+        if not date:
+            yield f"data: {json.dumps({'text': '缺少月报月份参数'}, ensure_ascii=False)}\n\n"
+            return
+        report = get_monthly_report(date)
+    elif report_type == "range":
+        if not start or not end:
+            yield f"data: {json.dumps({'text': '缺少区间开始或结束参数'}, ensure_ascii=False)}\n\n"
+            return
+        try:
+            report = get_range_report(start, end)
+        except ValueError as exc:
+            yield f"data: {json.dumps({'text': str(exc)}, ensure_ascii=False)}\n\n"
+            return
     else:
         yield f"data: {json.dumps({'text': '不支持的报告类型'}, ensure_ascii=False)}\n\n"
         return
 
-    report_text = _format_report_for_prompt(report)
+    yield f"data: {json.dumps({'type': 'status', 'stage': 'analyzing', 'text': '正在分析数据...'}, ensure_ascii=False)}\n\n"
+    await asyncio.sleep(0)
+
+    report_text = _format_report_for_prompt(report, report_type)
     prompt_template = _load_prompt("insight.txt")
     prompt = prompt_template.replace("{report_data}", report_text)
+
+    yield f"data: {json.dumps({'type': 'status', 'stage': 'generating', 'text': '正在生成分析...'}, ensure_ascii=False)}\n\n"
+    await asyncio.sleep(0)
 
     stream = client.chat.completions.create(
         model=QWEN_MODEL,
@@ -66,5 +93,6 @@ async def stream_insight(report_type: str, date_str: str):
         if chunk.choices and chunk.choices[0].delta.content:
             text = chunk.choices[0].delta.content
             yield f"data: {json.dumps({'text': text}, ensure_ascii=False)}\n\n"
+            await asyncio.sleep(0)
 
     yield "data: [DONE]\n\n"

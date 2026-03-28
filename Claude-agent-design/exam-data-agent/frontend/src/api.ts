@@ -1,10 +1,15 @@
 const BASE_URL = import.meta.env.VITE_API_URL || "";
 
+const LOCAL_HOSTNAMES = new Set(["localhost", "127.0.0.1", "::1"]);
+
 /**
  * 静态模式：当没有配置后端 API 地址时（如 CF Pages 部署），
  * 从 /cache/ 目录读取预生成的 JSON 缓存。
  */
-const IS_STATIC = typeof window !== "undefined" && !import.meta.env.VITE_API_URL && window.location.hostname !== "localhost";
+const IS_STATIC =
+  typeof window !== "undefined" &&
+  !import.meta.env.VITE_API_URL &&
+  !LOCAL_HOSTNAMES.has(window.location.hostname);
 
 /** 尝试从静态缓存获取查询结果（用于 CF Pages 纯前端部署） */
 async function tryStaticCache(sql: string): Promise<{ columns: string[]; rows: string[][] } | null> {
@@ -37,8 +42,15 @@ export interface ChatResponse {
 }
 
 export interface ReportResponse {
-  period: { start?: string; end?: string; month?: string };
+  period: { start?: string; end?: string; month?: string; weeks?: number };
   sections: Record<string, any>;
+}
+
+export interface InsightParams {
+  type: "weekly" | "monthly" | "range";
+  date?: string;
+  start?: string;
+  end?: string;
 }
 
 export async function sendChat(message: string, history: { role: string; content: string }[]): Promise<ChatResponse> {
@@ -57,14 +69,27 @@ export async function sendChat(message: string, history: { role: string; content
   return res.json();
 }
 
+async function parseReportResponse(res: Response): Promise<ReportResponse> {
+  const data = await res.json();
+  if (!res.ok) {
+    throw new Error(data?.detail || "报表加载失败");
+  }
+  return data;
+}
+
 export async function getWeeklyReport(date: string): Promise<ReportResponse> {
   const res = await fetch(`${BASE_URL}/api/report/weekly?date=${date}`);
-  return res.json();
+  return parseReportResponse(res);
 }
 
 export async function getMonthlyReport(month: string): Promise<ReportResponse> {
   const res = await fetch(`${BASE_URL}/api/report/monthly?month=${month}`);
-  return res.json();
+  return parseReportResponse(res);
+}
+
+export async function getRangeReport(start: string, end: string): Promise<ReportResponse> {
+  const res = await fetch(`${BASE_URL}/api/report/range?start=${start}&end=${end}`);
+  return parseReportResponse(res);
 }
 
 // --- 聊天流式 API ---
@@ -167,13 +192,33 @@ export async function streamChat(
 
 // --- 报告洞察流式 API ---
 
-export function streamInsight(type: string, date: string, onChunk: (text: string) => void, onDone: () => void, onError?: (msg: string) => void) {
+export type InsightStatusEvent = {
+  stage?: "querying" | "analyzing" | "generating";
+  text: string;
+};
+
+export function streamInsight(
+  params: InsightParams,
+  onChunk: (text: string) => void,
+  onDone: () => void,
+  onError?: (msg: string) => void,
+  onStatus?: (status: InsightStatusEvent) => void,
+) {
   if (IS_STATIC) {
     onError?.("当前为静态部署模式，洞察分析需要后端服务支持。");
     onDone();
     return () => {};
   }
-  const url = `${BASE_URL}/api/insight/stream?type=${type}&date=${date}`;
+
+  const search = new URLSearchParams({ type: params.type });
+  if (params.type === "range") {
+    if (params.start) search.set("start", params.start);
+    if (params.end) search.set("end", params.end);
+  } else if (params.date) {
+    search.set("date", params.date);
+  }
+
+  const url = `${BASE_URL}/api/insight/stream?${search.toString()}`;
   const eventSource = new EventSource(url);
 
   eventSource.onmessage = (event) => {
@@ -184,7 +229,12 @@ export function streamInsight(type: string, date: string, onChunk: (text: string
     }
     try {
       const data = JSON.parse(event.data);
-      if (data.text) onChunk(data.text);
+      if (data.type === "status" && data.text) {
+        onStatus?.({ stage: data.stage, text: data.text });
+      }
+      if (data.text && data.type !== "status") {
+        onChunk(data.text);
+      }
     } catch {}
   };
 
