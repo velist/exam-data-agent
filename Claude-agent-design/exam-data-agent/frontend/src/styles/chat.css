@@ -1,6 +1,5 @@
 /* ============================================
-   考宝 AI 助手 — Chat Page Styles
-   严格对照 考宝1.2-test.html 移植
+   典宝 AI 助手 — Chat Page Styles
    断点: 768px | 移动端满屏 / PC端圆角容器
    ============================================ */
 
@@ -42,6 +41,7 @@ body {
   flex-direction: column;
   box-shadow: 0 20px 60px rgba(0,0,0,0.1);
   overflow: hidden;
+  overflow-x: hidden;
   margin: 0 auto;
 }
 
@@ -84,6 +84,7 @@ body {
   transform: translateY(-100%);
   opacity: 0;
   pointer-events: none;
+  visibility: hidden;
 }
 
 .landing-header {
@@ -316,7 +317,7 @@ body {
   align-items: center;
   flex-shrink: 0;
   position: relative;
-  overflow: visible;
+  overflow: hidden;
   background: linear-gradient(180deg, rgba(255,255,255,0.12) 0%, rgba(255,255,255,0.02) 100%);
   backdrop-filter: blur(18px);
   -webkit-backdrop-filter: blur(18px);
@@ -890,6 +891,12 @@ body {
   .vh-section-mini {
     height: 15vh;
   }
+  .mini-sphere-wrap {
+    transform: translateX(-20px) scale(0.42);
+  }
+  .state-text {
+    transform: translate(84px, -80px);
+  }
 
   /* Guide cards: 横排 */
   .guide-cards-container {
@@ -913,6 +920,7 @@ body {
   body {
     background: #FFFFFF;
     align-items: stretch;
+    overflow-x: hidden;
   }
   .app-container {
     border-radius: 0;
@@ -920,6 +928,11 @@ body {
     height: 100vh;
     height: 100dvh;
     max-width: 100%;
+    overflow-x: hidden;
+  }
+
+  .landing-screen {
+    overflow: hidden;
   }
 
   .landing-header {
@@ -940,14 +953,44 @@ body {
     line-height: 1.35;
   }
 
+  .core-container {
+    overflow: hidden;
+  }
+
   .landing-footer { padding: 0 20px 40px; }
 
-  .chat-area { padding: 16px 20px; }
-  .input-bar { padding: 12px 20px calc(12px + env(safe-area-inset-bottom, 0px)); }
-  .message { max-width: 90%; }
+  .vh-section-mini {
+    height: 12vh;
+  }
+  .mini-sphere-wrap {
+    transform: translateX(-16px) scale(0.55);
+  }
+  .state-text {
+    transform: translate(72px, -68px);
+    font-size: 12px;
+    padding: 4px 10px;
+  }
+
+  .chat-area { padding: 16px 16px; }
+  .input-bar { padding: 12px 12px calc(12px + env(safe-area-inset-bottom, 0px)); }
+  .message { max-width: 92%; }
 
   .chart-body {
     height: auto;
     min-height: 110px;
+  }
+
+  .data-visual-card {
+    padding: 10px;
+    border-radius: 12px;
+    margin-top: 8px;
+  }
+  .data-visual-card .ant-table-cell { padding: 10px 12px !important; }
+  .data-visual-card .ant-table-thead > tr > th { padding: 10px 12px !important; font-size: 13px; }
+  .data-visual-card .ant-table-tbody > tr > td { padding: 10px 12px !important; font-size: 13px; }
+
+  .chart-container {
+    padding: 10px;
+    margin-top: 8px;
   }
 }

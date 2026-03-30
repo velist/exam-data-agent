@@ -260,7 +260,7 @@ export default function Chat() {
       <div className={`landing-screen ${screen === "chat" ? "exit" : ""}`}>
         <div className="landing-header">
           <h1>Hello</h1>
-          <h2>我是考宝，有什么可以帮你的？</h2>
+          <h2>我是典宝，有什么可以帮你的？</h2>
           <p>我是你的业务数据助理，懂数据、会查询。内部经营指标、用户行为分析、营收报表查询，交给我就好。</p>
         </div>
 
@@ -291,7 +291,7 @@ export default function Chat() {
         <header className="chat-header">
           <div className="header-title" onClick={() => setScreen("landing")}>
             <span className="status-dot" />
-            考宝 AI 助手
+            典宝 AI 助手
           </div>
           <div className="header-actions">
             <button className="header-btn" onClick={() => navigate("/report?type=weekly")}>
@@ -318,7 +318,7 @@ export default function Chat() {
           {/* Welcome guide cards when no messages */}
           {messages.length === 0 && (
             <div className="message ai-msg guide-message">
-              您好！我是您的企业数据助理考宝。您可以直接对我说话，或者点击下方为您准备的快捷入口。
+              您好！我是您的企业数据助理典宝。您可以直接对我说话，或者点击下方为您准备的快捷入口。
               <div className="guide-cards-container">
                 {SUGGESTIONS.map((s) => (
                   <div key={s} className="guide-card" onClick={() => handleSend(s)}>
