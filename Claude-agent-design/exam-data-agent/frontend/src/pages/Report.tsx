@@ -127,10 +127,10 @@ export default function Report() {
     : "";
 
   const overviewText = reportType === "weekly"
-    ? `统计周期为 ${periodText || weekLabel}，重点观察考试宝典近期拉新、活跃、转化与留存表现。`
+    ? `统计周期为 ${periodText || weekLabel}，重点观察典宝近期拉新、活跃、转化与留存表现。`
     : isRangeMode
-      ? `统计周期为 ${periodText || `${range[0].format("YYYY-MM-DD")} ~ ${range[1].format("YYYY-MM-DD")}`}，重点复盘考试宝典自定义区间内的经营走势与关键波动指标。`
-      : `统计周期为 ${periodText || month}，重点复盘考试宝典月度经营走势与关键波动指标。`;
+      ? `统计周期为 ${periodText || `${range[0].format("YYYY-MM-DD")} ~ ${range[1].format("YYYY-MM-DD")}`}，重点复盘典宝自定义区间内的经营走势与关键波动指标。`
+      : `统计周期为 ${periodText || month}，重点复盘典宝月度经营走势与关键波动指标。`;
 
   const emptyText = reportType === "weekly" ? "暂无周报数据" : isRangeMode ? "暂无自定义区间报告数据" : "暂无月报数据";
 
@@ -199,7 +199,7 @@ export default function Report() {
         <Button className="report-page__back" icon={<ArrowLeftOutlined />} onClick={() => navigate("/")} type="text" />
         <div className="report-page__hero">
           <Title level={4} className="report-page__title">
-            考试宝典{reportType === "weekly" ? "周" : isRangeMode ? "自定义区间" : "月"}报
+            典宝{reportType === "weekly" ? "周" : isRangeMode ? "自定义区间" : "月"}报
           </Title>
           <Text type="secondary" className="report-page__subtitle">
             围绕用户增长、活跃、付费、留存与行为的业务复盘

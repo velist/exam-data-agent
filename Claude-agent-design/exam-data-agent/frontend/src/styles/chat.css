@@ -933,6 +933,25 @@ body {
 
   .landing-screen {
     overflow: hidden;
+    /* 移动端取消滑动，改为纯淡入淡出，避免遮挡顶部 */
+    transition: opacity 0.3s ease;
+  }
+  .landing-screen.exit {
+    transform: none;
+  }
+
+  /* 移动端聊天屏取消向上弹入，直接淡入 */
+  .chat-screen {
+    transform: none;
+    transition: opacity 0.3s ease;
+  }
+  .chat-screen.enter {
+    transform: none;
+  }
+
+  /* 移动端禁用浮动标签的上下漂浮动画 */
+  .float-tag {
+    animation: none;
   }
 
   .landing-header {
