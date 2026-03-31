@@ -169,9 +169,9 @@ export default function Report() {
           <div className="report-page__section-line" />
         </div>
         <div className="report-page__metrics">
-          <Row gutter={[16, 16]}>
+          <Row gutter={[{ xs: 8, sm: 16 }, 12]}>
             {metrics.map((m: any) => (
-              <Col key={m.label} xs={24} sm={12} md={8} lg={6}>
+              <Col key={m.label} xs={12} sm={12} md={8} lg={6}>
                 <MetricCard data={{ ...m, description: METRIC_DESCRIPTIONS[m.label] }} />
               </Col>
             ))}
