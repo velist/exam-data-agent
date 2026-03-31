@@ -1,11 +1,12 @@
-import { Card } from "antd";
-import { ArrowUpOutlined, ArrowDownOutlined } from "@ant-design/icons";
+import { Card, Tooltip } from "antd";
+import { ArrowUpOutlined, ArrowDownOutlined, QuestionCircleOutlined } from "@ant-design/icons";
 
 interface MetricData {
   label: string;
   value: string;
   wow: string;
   yoy: string;
+  description?: string;
 }
 
 function ChangeTag({ label, value }: { label: string; value: string }) {
@@ -29,7 +30,14 @@ function ChangeTag({ label, value }: { label: string; value: string }) {
 export default function MetricCard({ data }: { data: MetricData }) {
   return (
     <Card className="metric-card" size="small" styles={{ body: { padding: 20, height: "100%" } }}>
-      <div className="metric-card__label">{data.label}</div>
+      <div className="metric-card__label">
+        {data.label}
+        {data.description && (
+          <Tooltip title={data.description} placement="top">
+            <QuestionCircleOutlined className="metric-card__info-icon" />
+          </Tooltip>
+        )}
+      </div>
       <div className="metric-card__value">{data.value}</div>
       <div className="metric-card__changes">
         <ChangeTag label="环比" value={data.wow} />

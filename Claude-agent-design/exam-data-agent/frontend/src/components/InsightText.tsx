@@ -4,6 +4,12 @@ import { BulbOutlined, LoadingOutlined } from "@ant-design/icons";
 import ReactMarkdown from "react-markdown";
 import { InsightParams, InsightStatusEvent, streamInsight } from "../api";
 
+interface StepDef {
+  stage: string;
+  text: string;
+  doneText: string;
+}
+
 interface Props {
   params: InsightParams;
 }
@@ -14,14 +20,14 @@ export default function InsightText({ params }: Props) {
   const [error, setError] = useState("");
   const [status, setStatus] = useState<InsightStatusEvent>({
     stage: "querying",
-    text: "正在查询数据...",
+    text: "数据查询中",
   });
 
   useEffect(() => {
     setText("");
     setError("");
     setLoading(true);
-    setStatus({ stage: "querying", text: "正在查询数据..." });
+    setStatus({ stage: "querying", text: "数据查询中" });
     const cancel = streamInsight(
       params,
       (chunk) => setText((prev) => prev + chunk),
@@ -32,11 +38,11 @@ export default function InsightText({ params }: Props) {
     return cancel;
   }, [params.type, params.date, params.start, params.end]);
 
-  const steps = useMemo<InsightStatusEvent[]>(
+  const steps = useMemo<StepDef[]>(
     () => [
-      { stage: "querying", text: "正在查询数据..." },
-      { stage: "analyzing", text: "正在分析数据..." },
-      { stage: "generating", text: "正在生成分析..." },
+      { stage: "querying", text: "数据查询中", doneText: "数据查询完毕" },
+      { stage: "analyzing", text: "数据分析中", doneText: "数据分析完毕" },
+      { stage: "generating", text: "分析生成中", doneText: "分析生成完毕" },
     ],
     [],
   );
@@ -62,7 +68,7 @@ export default function InsightText({ params }: Props) {
         <div className="report-insight__status-card">
           <div className="report-insight__status-header">
             <span className="report-insight__status-dot" />
-            <span className="report-insight__status-text">{loading ? status.text : hasGeneratedText ? "分析已生成" : "等待生成分析"}</span>
+            <span className="report-insight__status-text">{loading ? status.text : hasGeneratedText ? "分析生成完毕" : "等待生成分析"}</span>
             {loading && <Spin indicator={<LoadingOutlined spin />} size="small" />}
           </div>
           <div className="report-insight__steps" role="status" aria-live="polite">
@@ -81,7 +87,7 @@ export default function InsightText({ params }: Props) {
                     .join(" ")}
                 >
                   <span className="report-insight__step-marker">{completed ? "✓" : index + 1}</span>
-                  <span className="report-insight__step-label">{completed ? "已生成" : step.text}</span>
+                  <span className="report-insight__step-label">{completed ? step.doneText : step.text}</span>
                 </div>
               );
             })}

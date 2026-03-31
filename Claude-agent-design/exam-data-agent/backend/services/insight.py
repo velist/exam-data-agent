@@ -42,7 +42,7 @@ def _format_report_for_prompt(report: dict, report_type: str) -> str:
 
 async def stream_insight(report_type: str, date: str | None = None, start: str | None = None, end: str | None = None):
     """SSE流式生成洞察分析"""
-    yield f"data: {json.dumps({'type': 'status', 'stage': 'querying', 'text': '正在查询数据...'}, ensure_ascii=False)}\n\n"
+    yield f"data: {json.dumps({'type': 'status', 'stage': 'querying', 'text': '数据查询中'}, ensure_ascii=False)}\n\n"
     await asyncio.sleep(0)
 
     if report_type == "weekly":
@@ -68,14 +68,14 @@ async def stream_insight(report_type: str, date: str | None = None, start: str |
         yield f"data: {json.dumps({'text': '不支持的报告类型'}, ensure_ascii=False)}\n\n"
         return
 
-    yield f"data: {json.dumps({'type': 'status', 'stage': 'analyzing', 'text': '正在分析数据...'}, ensure_ascii=False)}\n\n"
+    yield f"data: {json.dumps({'type': 'status', 'stage': 'analyzing', 'text': '数据分析中'}, ensure_ascii=False)}\n\n"
     await asyncio.sleep(0)
 
     report_text = _format_report_for_prompt(report, report_type)
     prompt_template = _load_prompt("insight.txt")
     prompt = prompt_template.replace("{report_data}", report_text)
 
-    yield f"data: {json.dumps({'type': 'status', 'stage': 'generating', 'text': '正在生成分析...'}, ensure_ascii=False)}\n\n"
+    yield f"data: {json.dumps({'type': 'status', 'stage': 'generating', 'text': '分析生成中'}, ensure_ascii=False)}\n\n"
     await asyncio.sleep(0)
 
     stream = client.chat.completions.create(

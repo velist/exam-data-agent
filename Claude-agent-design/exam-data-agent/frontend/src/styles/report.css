@@ -378,6 +378,19 @@
   font-size: 13px;
 }
 
+.metric-card__info-icon {
+  margin-left: 6px;
+  color: var(--report-text-soft);
+  font-size: 13px;
+  cursor: help;
+  vertical-align: middle;
+  transition: color 0.2s;
+}
+
+.metric-card__info-icon:hover {
+  color: var(--report-primary);
+}
+
 .metric-card__value {
   color: var(--report-primary);
   font-size: 28px;
@@ -748,22 +761,25 @@
   .report-page__header {
     align-items: flex-start;
     padding: 12px 16px;
-    gap: 12px;
+    gap: 10px;
   }
 
-  .report-page__hero,
-  .report-page__controls,
   .report-page__back {
-    width: 100%;
+    flex: 0 0 auto;
+    width: auto;
   }
 
   .report-page__hero {
+    flex: 1 1 0%;
+    width: auto;
     margin-right: 0;
   }
 
   .report-page__controls {
+    width: 100%;
     display: grid;
     grid-template-columns: 1fr;
+    gap: 8px;
     align-items: stretch;
   }
 
@@ -840,7 +856,8 @@
 
 @media (max-width: 479px) {
   .report-page__header {
-    padding: 10px 12px;
+    padding: 8px 12px;
+    gap: 8px;
   }
 
   .report-page__content {
@@ -856,16 +873,16 @@
   }
 
   .report-page__title {
-    font-size: 18px !important;
+    font-size: 16px !important;
   }
 
   .report-page__subtitle {
-    font-size: 12px;
+    display: none;
   }
 
   .report-page__period-tag {
-    padding: 6px 10px;
-    font-size: 12px;
+    padding: 4px 8px;
+    font-size: 11px;
   }
 
   .report-trend-chart .ant-card-head {
