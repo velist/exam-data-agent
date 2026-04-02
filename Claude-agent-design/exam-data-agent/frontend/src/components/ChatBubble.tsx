@@ -63,12 +63,13 @@ function extractChartData(table: { columns: string[]; rows: string[][] }) {
     .map((column, index) => {
       if (index === labelIdx) return null;
 
-      const allNumeric = table.rows.every((row) => isNumeric(row[index] || "0"));
+      const values = table.rows.map((row) => row[index] ?? "");
+      const allNumeric = values.every((value) => isNumeric(value));
       if (!allNumeric) return null;
 
       return {
         name: column,
-        data: table.rows.map((row) => parseNumericValue(row[index] || "0")),
+        data: values.map((value) => parseNumericValue(value)),
       };
     })
     .filter((item): item is { name: string; data: number[] } => item !== null);
@@ -97,10 +98,10 @@ export default function ChatBubble({ role, content, table, statusText, error }: 
     return extractChartData(table);
   }, [table]);
 
-  const canDownloadTable = Boolean(table && table.columns.length > 0);
+  const canDownloadTable = Boolean(table && table.columns.length > 0 && table.rows.length > 0);
 
   const handleDownloadXlsx = () => {
-    if (!table || table.columns.length === 0) return;
+    if (!table || table.columns.length === 0 || table.rows.length === 0) return;
 
     const worksheet = XLSX.utils.aoa_to_sheet([table.columns, ...table.rows]);
     const workbook = XLSX.utils.book_new();
@@ -149,7 +150,13 @@ export default function ChatBubble({ role, content, table, statusText, error }: 
 
       {/* 2.5 Download current table as XLSX */}
       {canDownloadTable && (
-        <div style={{ margin: chartData ? "12px 0" : "12px 0 0" }}>
+        <div
+          style={{
+            margin: chartData ? "12px 0" : "12px 0 0",
+            display: "flex",
+            justifyContent: "flex-end",
+          }}
+        >
           <button
             type="button"
             onClick={handleDownloadXlsx}
