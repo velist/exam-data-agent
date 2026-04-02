@@ -1,5 +1,6 @@
 import sys, os
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
+from config import ALLOWED_TABLES
 from sql_validator import validate_sql
 
 
@@ -46,6 +47,12 @@ def test_reject_bigdata_other():
 def test_allow_dws_salesflow():
     sql = "SELECT * FROM dws.dws_v_salesflow_dateil WHERE 销售日期 >= '2026-01-01'"
     assert validate_sql(sql) is True
+
+
+def test_allowed_tables_config_salesflow_whitelist():
+    assert "dws.dws_v_salesflow_dateil" in ALLOWED_TABLES
+    assert "bigdata.v_ws_salesflow_ex" not in ALLOWED_TABLES
+
 
 def test_allow_subquery():
     sql = "SELECT * FROM (SELECT start_dt, reg_users FROM dws.dws_active_user_report_week) t"
