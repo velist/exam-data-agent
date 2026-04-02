@@ -304,14 +304,16 @@ export default function Chat() {
         </header>
 
         {/* Mini sphere section */}
-        <section className="vh-section-mini">
-          <div className="mini-sphere-wrap">
-            <div ref={sphereRef}>
-              <SmartSphere />
+        {screen === "landing" && (
+          <section className="vh-section-mini">
+            <div className="mini-sphere-wrap">
+              <div ref={sphereRef}>
+                <SmartSphere />
+              </div>
+              <div className="state-text">{STATE_TEXT_MAP[appState]}</div>
             </div>
-            <div className="state-text">{STATE_TEXT_MAP[appState]}</div>
-          </div>
-        </section>
+          </section>
+        )}
 
         {/* Chat area */}
         <div className="chat-area">
