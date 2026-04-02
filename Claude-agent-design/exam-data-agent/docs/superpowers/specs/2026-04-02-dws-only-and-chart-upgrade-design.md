@@ -25,17 +25,29 @@
 | 文件 | 变更内容 |
 |------|----------|
 | `backend/config.py` | 从 `ALLOWED_TABLES` 列表中删除 `bigdata.v_ws_salesflow_ex`、`bigdata.v_ksb_users_ex`、`bigdata.v_ws_vnsalesrank`、`bigdata.v_ksb_userclick` |
-| `backend/prompts/nl2sql.txt` | 1. 删除 bigdata 表结构描述区块（约 50 行）<br>2. 删除引用 bigdata 表的 SQL 示例（约 20 行）<br>3. 修改意图分类：移除"销售收入/业绩统计/用户画像/埋点行为"独立类别，将可覆盖的需求映射到 dws 表<br>4. 新增引导规则：当问题涉及原 bigdata 覆盖的领域但 dws 无法回答时，礼貌说明数据暂不支持 |
-| `backend/sql_validator.py` | 无需改动 — bigdata 表不在白名单中自然被拦截；dws 宽松放行逻辑保持不变 |
+| `backend/prompts/nl2sql.txt` | 1. 删除 bigdata 表结构描述区块（约 50 行）<br>2. 删除引用 bigdata 表的 8+ 个 SQL 示例块<br>3. 修改意图分类：移除"销售收入/业绩统计/用户画像/埋点行为"独立类别，将可覆盖的需求映射到 dws 表<br>4. 在提示词中新增引导规则（见下方"引导规则实施方式"） |
+| `backend/services/chat.py` | 第 251 行 SQL 修复重试提示词中硬编码了 bigdata 表名，需改为仅引用 dws 库 |
+| `backend/tests/test_sql_validator.py` | `test_allow_bigdata_sales` 测试用例需改为验证 bigdata 表被**拦截** |
+| `backend/sql_validator.py` | 无需改动 — bigdata 表不在白名单中自然被拦截；`_is_table_allowed` 中 `dws.` 开头的宽松放行逻辑保持不变 |
+
+### 引导规则实施方式
+
+通过 `nl2sql.txt` 提示词指令实现，**不在 chat.py 中新增代码逻辑**：
+
+- 在提示词中明确告知 LLM：当前系统仅支持 dws 库中的数据表
+- 当用户问到销售明细、用户画像、点击埋点等原 bigdata 覆盖的领域时，LLM 应：
+  1. 优先尝试用 dws 表中的近似数据回答（如用付费转化表回答销售相关问题）
+  2. 如果确实无法用 dws 表回答，直接在 SQL 输出位置返回特殊标记 `-- NO_DATA_AVAILABLE`，后跟一句自然语言说明
+- `chat.py` 中 `_clean_sql_response` 已有对非 SQL 输出的处理逻辑，检测到该标记时跳过 SQL 执行，直接将说明文本作为回复返回
 
 ### dws 表对 bigdata 需求的覆盖映射
 
-| 原 bigdata 需求 | dws 近似覆盖 |
-|-----------------|-------------|
-| 销售流水（`v_ws_salesflow_ex`） | `dws_pay_user_report_week`（付费转化、ARPU、复购率） |
-| 用户画像（`v_ksb_users_ex`） | `dws_user_daily_quiz_stats_day`（注册/活跃）+ `dws_active_user_report_week`（活跃明细） |
-| 销售排名（`v_ws_vnsalesrank`） | `dws_pay_user_report_week`（付费维度汇总） |
-| 点击行为（`v_ksb_userclick`） | `dws_user_behavior_report_week`（答题/模考/课程参与率） |
+| 原 bigdata 需求 | dws 近似覆盖 | 降级说明 |
+|-----------------|-------------|----------|
+| 销售流水（`v_ws_salesflow_ex`） | `dws_pay_user_report_week`（付费转化、ARPU、复购率） | 无日粒度明细和单笔金额，只能给出周维度付费汇总 |
+| 用户画像（`v_ksb_users_ex`） | `dws_user_daily_quiz_stats_day` + `dws_active_user_report_week` | 无渠道、省份、职称等画像维度，仅有注册/活跃统计 |
+| 销售排名（`v_ws_vnsalesrank`） | `dws_pay_user_report_week`（付费维度汇总） | 无部门维度排名 |
+| 点击行为（`v_ksb_userclick`） | `dws_user_behavior_report_week`（参与率） | 无页面/按钮级埋点明细 |
 
 ### 不受影响的部分
 
@@ -120,9 +132,11 @@ interface ChatChartProps {
 ### 任务一
 - [ ] 验证 `ALLOWED_TABLES` 只包含 dws 表
 - [ ] 验证查询 bigdata 表的 SQL 被 validator 拦截
+- [ ] 验证 `chat.py` 中 SQL 修复提示词不再引用 bigdata 表
+- [ ] 更新 `test_sql_validator.py` 中 bigdata 相关用例为拦截断言
 - [ ] 验证用户问"销售流水"时 LLM 能用 dws 表近似回答
-- [ ] 验证用户问"用户画像"时 LLM 给出合理回复
-- [ ] 运行现有后端测试确保无回归
+- [ ] 验证用户问无法覆盖的问题时返回合理说明
+- [ ] 运行全部后端测试确保无回归
 
 ### 任务二
 - [ ] 对话页单系列数据显示折线图/柱状图正确
@@ -130,6 +144,8 @@ interface ChatChartProps {
 - [ ] Tooltip 悬停显示所有系列数值
 - [ ] 单系列时 legend 自动隐藏
 - [ ] 下载按钮生成正确的 XLSX 文件
-- [ ] XLSX 包含完整表头和数据
+- [ ] XLSX 包含完整表头和数据（含中文列名）
+- [ ] 空表格时下载按钮不显示
 - [ ] 移动端图表和按钮响应式正常
-- [ ] 运行现有前端测试确保无回归
+- [ ] 大量类目（50+ 行数据）时图表渲染正常、标签不重叠
+- [ ] 运行全部前端测试确保无回归
