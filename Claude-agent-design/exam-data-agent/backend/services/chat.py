@@ -248,7 +248,7 @@ def _generate_sql_with_fix(message: str, history: list[dict]) -> str:
     fix_messages = _build_llm_messages(
         message,
         history,
-        "上一次生成的SQL不合规。请重新生成一条安全的SELECT查询。只使用dws库、bigdata.v_ws_salesflow_ex、bigdata.v_ws_vnsalesrank、bigdata.v_ksb_users_ex、bigdata.v_ksb_userclick表。只输出SQL，不要解释。",
+        "上一次生成的SQL不合规。请重新生成一条安全的SELECT查询。只使用dws库中的表。只输出SQL，不要解释。",
     )
     fix_messages.append({"role": "system", "content": f"不合规SQL：{sql}"})
     response = client.chat.completions.create(model=QWEN_MODEL, messages=fix_messages, temperature=0, max_tokens=2500)
