@@ -17,15 +17,16 @@
 ### 目标
 
 - 从白名单中移除 `bigdata.*` 的 4 张表
+- 新增 `dws.dws_v_salesflow_dateil`（清洗后的销售流水视图）替代原 bigdata 销售表
 - 清理 NL2SQL 提示词中的 bigdata 表结构描述和 SQL 示例
-- 当用户问到销售/画像类问题时，引导 LLM 用 dws 表近似回答
+- 当用户问到无法覆盖的问题时，引导 LLM 礼貌说明
 
 ### 涉及文件
 
 | 文件 | 变更内容 |
 |------|----------|
-| `backend/config.py` | 从 `ALLOWED_TABLES` 列表中删除 `bigdata.v_ws_salesflow_ex`、`bigdata.v_ksb_users_ex`、`bigdata.v_ws_vnsalesrank`、`bigdata.v_ksb_userclick` |
-| `backend/prompts/nl2sql.txt` | 1. 删除 bigdata 表结构描述区块（约 50 行）<br>2. 删除引用 bigdata 表的 8+ 个 SQL 示例块<br>3. 修改意图分类：移除"销售收入/业绩统计/用户画像/埋点行为"独立类别，将可覆盖的需求映射到 dws 表<br>4. 在提示词中新增引导规则（见下方"引导规则实施方式"） |
+| `backend/config.py` | 1. 从 `ALLOWED_TABLES` 删除 4 条 bigdata 表<br>2. 新增 `dws.dws_v_salesflow_dateil` 到白名单 |
+| `backend/prompts/nl2sql.txt` | 1. 删除 bigdata 表结构描述区块（约 50 行）<br>2. 删除引用 bigdata 表的 8+ 个 SQL 示例块<br>3. 新增 `dws.dws_v_salesflow_dateil` 的表结构描述和示例（需查表获取字段）<br>4. 修改意图分类：移除"用户画像/埋点行为"独立类别，"销售"类指向新 dws 销售表<br>5. 在提示词中新增引导规则（见下方"引导规则实施方式"） |
 | `backend/services/chat.py` | 第 251 行 SQL 修复重试提示词中硬编码了 bigdata 表名，需改为仅引用 dws 库 |
 | `backend/tests/test_sql_validator.py` | `test_allow_bigdata_sales` 测试用例需改为验证 bigdata 表被**拦截** |
 | `backend/sql_validator.py` | 无需改动 — bigdata 表不在白名单中自然被拦截；`_is_table_allowed` 中 `dws.` 开头的宽松放行逻辑保持不变 |
@@ -42,12 +43,12 @@
 
 ### dws 表对 bigdata 需求的覆盖映射
 
-| 原 bigdata 需求 | dws 近似覆盖 | 降级说明 |
-|-----------------|-------------|----------|
-| 销售流水（`v_ws_salesflow_ex`） | `dws_pay_user_report_week`（付费转化、ARPU、复购率） | 无日粒度明细和单笔金额，只能给出周维度付费汇总 |
-| 用户画像（`v_ksb_users_ex`） | `dws_user_daily_quiz_stats_day` + `dws_active_user_report_week` | 无渠道、省份、职称等画像维度，仅有注册/活跃统计 |
-| 销售排名（`v_ws_vnsalesrank`） | `dws_pay_user_report_week`（付费维度汇总） | 无部门维度排名 |
-| 点击行为（`v_ksb_userclick`） | `dws_user_behavior_report_week`（参与率） | 无页面/按钮级埋点明细 |
+| 原 bigdata 需求 | dws 覆盖 | 说明 |
+|-----------------|----------|------|
+| 销售流水（`v_ws_salesflow_ex`） | **`dws.dws_v_salesflow_dateil`**（新表，完整替代） | 清洗后的销售流水视图，字段待查表确认 |
+| 销售排名（`v_ws_vnsalesrank`） | **`dws.dws_v_salesflow_dateil`** + `dws_pay_user_report_week` | 可从新销售表聚合排名 |
+| 用户画像（`v_ksb_users_ex`） | `dws_user_daily_quiz_stats_day` + `dws_active_user_report_week` | 降级：无渠道、省份、职称等画像维度 |
+| 点击行为（`v_ksb_userclick`） | 直接移除，不替代 | dws_user_behavior_report_week 的学习行为数据已够用 |
 
 ### 不受影响的部分
 
@@ -127,14 +128,34 @@ interface ChatChartProps {
 
 ---
 
+## 任务三：对话模式下隐藏 mini 球形区域
+
+### 问题
+
+进入对话后，顶部的 `vh-section-mini`（SmartSphere 球形动画区域）仍然显示，遮挡对话内容。
+
+### 方案
+
+在 `Chat.tsx` 中，当进入对话模式（`phase === "chat"`）时，不渲染 `vh-section-mini` 区域，或通过 CSS 隐藏。
+
+### 涉及文件
+
+| 文件 | 变更内容 |
+|------|----------|
+| `frontend/src/pages/Chat.tsx` | `vh-section-mini` 区块添加条件渲染：仅在 landing 阶段显示 |
+| `frontend/src/styles/chat.css` | 可能需要调整对话模式下的布局间距 |
+
+---
+
 ## 测试计划
 
 ### 任务一
-- [ ] 验证 `ALLOWED_TABLES` 只包含 dws 表
+- [ ] 验证 `ALLOWED_TABLES` 只包含 dws 表（含新增 `dws_v_salesflow_dateil`）
 - [ ] 验证查询 bigdata 表的 SQL 被 validator 拦截
 - [ ] 验证 `chat.py` 中 SQL 修复提示词不再引用 bigdata 表
 - [ ] 更新 `test_sql_validator.py` 中 bigdata 相关用例为拦截断言
-- [ ] 验证用户问"销售流水"时 LLM 能用 dws 表近似回答
+- [ ] 查 `dws.dws_v_salesflow_dateil` 表结构，在 nl2sql.txt 中添加描述和示例
+- [ ] 验证用户问"销售流水"时 LLM 能正确使用新 dws 销售表
 - [ ] 验证用户问无法覆盖的问题时返回合理说明
 - [ ] 运行全部后端测试确保无回归
 
@@ -149,3 +170,8 @@ interface ChatChartProps {
 - [ ] 移动端图表和按钮响应式正常
 - [ ] 大量类目（50+ 行数据）时图表渲染正常、标签不重叠
 - [ ] 运行全部前端测试确保无回归
+
+### 任务三
+- [ ] 进入对话后 mini 球形区域不可见
+- [ ] landing 页面球形动画正常显示
+- [ ] 对话区域无遮挡、布局正常
