@@ -37,11 +37,15 @@ def test_reject_into_outfile():
 def test_reject_load_file():
     assert validate_sql("SELECT LOAD_FILE('/etc/passwd')") is False
 
-def test_allow_bigdata_sales():
-    assert validate_sql("SELECT sum(售价) FROM bigdata.v_ws_salesflow_ex WHERE 销售部门名称='APP直充'") is True
+def test_reject_bigdata_sales():
+    assert validate_sql("SELECT sum(售价) FROM bigdata.v_ws_salesflow_ex WHERE 销售部门名称='APP直充'") is False
 
 def test_reject_bigdata_other():
     assert validate_sql("SELECT * FROM bigdata.some_other_table") is False
+
+def test_allow_dws_salesflow():
+    sql = "SELECT * FROM dws.dws_v_salesflow_dateil WHERE 销售日期 >= '2026-01-01'"
+    assert validate_sql(sql) is True
 
 def test_allow_subquery():
     sql = "SELECT * FROM (SELECT start_dt, reg_users FROM dws.dws_active_user_report_week) t"
