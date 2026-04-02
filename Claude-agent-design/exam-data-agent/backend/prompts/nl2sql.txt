@@ -4,18 +4,18 @@
 分析用户问题，判断查询意图属于以下哪个类别：
 - **用户增长**：注册用户、新增用户 → 优先查日表 dws.dws_user_daily_quiz_stats_day 汇总
 - **用户活跃**：活跃用户、DAU、有效活跃 → 周维度查 dws.dws_active_user_report_week，日维度查日表
-- **付费转化**：付费用户、转化率、复购率、ARPU、收入 → 查 dws.dws_pay_user_report_week
+- **付费转化**：付费用户、转化率、复购率、ARPU、付费收入 → 查 dws.dws_pay_user_report_week
 - **用户留存**：留存率、次日留存、周留存 → 查 dws.dws_retention_user_report_week
 - **用户行为**：答题、模考、课程、播放进度、刷题量 → 查 dws.dws_user_behavior_report_week
-- **销售收入**：销售额、直充、销售金额 → 查 bigdata.v_ws_salesflow_ex
-- **业绩统计/部门业绩**：部门销售排名、渠道业绩、产品体系业绩 → 查 bigdata.v_ws_vnsalesrank
+- **销售收入**：销售额、销量、销售单量、卖了多少单、直充、渠道销售、部门销售、系列销售、班次销售 → 查 dws.dws_v_salesflow_dateil
+- **业绩统计/部门业绩**：部门销售排名、渠道业绩、产品体系业绩、班次销量、班次销售额 → 查 dws.dws_v_salesflow_dateil，按渠道类型/部门名称/代理商城市/代理商名称/系列名称/班次类型/班次简称等维度聚合
 - **用户反馈/客服**：客服、投诉、反馈、评价、问题类型、进线量 → 查 dws.dws_customer_service（客服进线数据）
-- **用户画像/渠道分析**：注册渠道、用户类型分布、职称类别、用户来源 → 查 bigdata.v_ksb_users_ex
-- **用户行为埋点**：页面点击、按钮点击、功能使用率、AI答疑点击 → 查 bigdata.v_ksb_userclick
+- **用户画像/渠道分析**：只允许使用 dws 的注册/活跃类表做近似回答；如果用户要求省份、城市、职称、渠道来源等细颗粒画像维度，则当前不支持
+- **用户行为埋点**：页面点击、按钮点击、页面访问、功能点击率、AI答疑点击 → 当前不支持
 - **综合概览**：最近情况、整体怎么样、数据怎么样 → 查 dws.dws_active_user_report_week 最新一行（给出注册+活跃+有效活跃）
 - **异常/评价类**："有什么异常吗""好不好""还行吗""有没有好转" → 同综合概览，查最新2行数据做环比对比
 - **关键指标汇总**："关键指标""核心指标""所有指标" → 查最新一周的注册+活跃+付费+留存核心数据
-- **口语化表达映射**："拉新"=注册用户，"钱/赚了多少"=销售额，"粘性"=留存率+活跃率，"DAU"=日活跃用户
+- **口语化表达映射**："拉新"=注册用户，"钱/赚了多少"=销售额，"卖了多少单/销量"=count(*)，"粘性"=留存率+活跃率，"DAU"=日活跃用户
 
 ## 第二步：时间理解（极其重要）
 
@@ -25,7 +25,7 @@
 - "最近" = 默认最近7天
 
 ### 时间段与表的选择策略
-- 用户说"本周""上周""今天""昨天""最近几天"等**短期/日粒度**查询 → 用日表 `dws.dws_user_daily_quiz_stats_day` 按日期范围汇总
+- 用户说"本周""上周""今天""昨天""最近几天"等**短期/日粒度**查询 → 用日表 `dws.dws_user_daily_quiz_stats_day` 或销售流水表 `dws.dws_v_salesflow_dateil` 按日期范围汇总
 - 用户说"周报""趋势""最近几周"等**周维度**查询 → 用周报表 `dws.*_report_week`（注意周报表的周定义是周六~周五，取最新N行即可）
 - 用户说"X月""月度"等查询 → 按月汇总
 
@@ -42,11 +42,14 @@
 5. 如果这是追问，默认必须继承上一轮已经确定的统计对象、时间范围、筛选条件、分组维度
 6. 如果用户只是在补充分析方式（如"环比呢""同比呢""趋势呢"），只能在上一轮同一口径上补充分析，不能擅自改成最新一期、本周、最近几周等新口径
 7. 如果用户是在上一轮结果上缩小范围（如"退款类呢""投诉类呢""某系列呢"），应保留原时间范围和主题，只追加对应筛选条件，不能切换成趋势分析或其他主题
-8. 如果当前追问是在上一轮结果上改分组维度（如按周、按系列、按科目），应保留统计主题、时间范围和筛选条件，只改变分组维度
+8. 如果当前追问是在上一轮结果上改分组维度（如按周、按系列、按科目），应保留统计主题、时间范围和筛选条件，只改变分组维度；销售主题下也包括按渠道类型、按班次等分组维度变更
 9. 只有用户明确提出新的时间、对象、维度时，才允许改变查询口径
 
 ## 第四步：生成SQL
-只输出一条SQL语句，不要解释，不要添加任何其他文字。
+- 能支持时：只输出一条SQL语句，不要解释，不要添加任何其他文字。
+- 当前 dws 库无法支持时，输出两行内容：
+  第一行固定输出：`-- NO_DATA_AVAILABLE`
+  第二行补一句自然语言说明原因，例如：`当前系统仅支持 dws 库，暂不支持页面点击埋点查询。`
 
 ## 可用表
 
@@ -87,10 +90,19 @@
 - quiz_rate: 人均刷题量（纯数字）
 - 各指标均有_yoy同比字段
 
-### bigdata.v_ws_salesflow_ex（销售流水）
-- 售价: 订单金额
-- 销售日期: 日期字符串
-- 销售部门名称: 如 'APP直充'
+### dws.dws_v_salesflow_dateil（销售流水明细 — 所有销售类问题统一从这张表查询）
+- 销售日期：销售发生的具体日期
+- 销售金额：订单销售金额；销售额口径固定为 `SUM(销售金额)`
+- 部门名称：责任部门，用于识别渠道归属
+- 代理商id：渠道识别辅助字段；当 `部门名称='' 且 代理商id='-1'` 时归为 APP直充
+- 代理商城市：区域分析维度
+- 代理商名称：合作方识别维度
+- 系列名称：产品系列，如高级职称、中级职称、执业药师
+- 班次类型：商品类型，固定按 `课程` / `题库` / `私教` 理解
+- 班次简称：商品简称
+- 班次具体名称：商品全称
+- 渠道类型：派生维度，不是原表字段，需要通过部门名称映射得到
+- 销量：业务口径固定为 `COUNT(*)`，不要使用其他口径替代
 
 ### dws.dws_customer_service（客服进线数据）
 - question_id: 问题编号（如 'ZC241231-00066'）
@@ -105,46 +117,43 @@
 - solution: 处理意见（客服回复）
 - 注意：退费/退款查询用 question_theme='退款类'，投诉用 question_theme='投诉反馈类' 或 question_type LIKE '%投诉%'
 
-### bigdata.v_ksb_users_ex（用户主表 — 用户画像、渠道分析、注册/活跃统计）
-- 用户ID: 用户唯一标识
-- 代理商代码: 渠道来源标识。官方渠道代码为 ('','888','889','999','772','8001'~'8021','9001'~'9099','ksbd87','857','K001','huaweiK001','Ktk001','885')；其余为合作商渠道。SQL中判断官方渠道用 REGEXP：代理商代码 REGEXP '^800[1-9]$|^80[1-9][0-9]$|^8021$|^900[1-9]$|^90[1-9][0-9]$|^909[0-9]$' 或 IN ('','888','889','999','772','857','885','ksbd87','K001','huaweiK001','Ktk001')
-- 注册日期: 用户注册时间（datetime，如 '2026-01-15 10:30:00'）
-- 最新登录日期: 最后一次登录时间（datetime）
-- 注册渠道: 注册来源标识（含smp为网盟渠道，需排除）
-- 用户最新手机型号: 如 'iPhone 15 Pro', 'HUAWEI Mate 60'
-- 科目名称: 用户当前学习的科目
-- 用户当前职称类别: 如 '初级护师', '主治医师', '执业药师'（'其他'为无效用户需排除）
-- 当前用户类型: '注册用户'/'付费用户'/'过期用户'
-- 用户归属省份, 用户归属城市: 地理位置
-- 注意：统计注册量时需排除 注册渠道 LIKE '%smp%' 和 用户当前职称类别='其他'
-
-### bigdata.v_ws_vnsalesrank（销售排名表 — 部门业绩、产品业绩、渠道业绩对比）
-- 代理渠道: 销售部门/渠道名称，如 'APP推广运营部'（APP直充）, '教学督导组'/'教学督导2组'/'教务组'/'咨询导学组'/'回访组'（客服）, 其余为渠道业务
-- 日期: 日期字符串（如 '2026-03-15'）
-- 大类: 产品大类（'其他'为无效数据需排除）
-- 班次简称: 产品名称
-- 结算分类: '考试宝典'/'医学教育' 为有效分类
-- 销量: 订单数量
-- 销售额: 订单金额
-- 注意：统计时需排除 大类='其他'，且 结算分类 IN ('考试宝典','医学教育')
-
-### bigdata.v_ksb_userclick（用户点击行为 — 功能使用率、页面访问量、按钮点击量）
-- USERID: 用户ID
-- PAGENUM: 页面编号（105=答题页/AI解析页）
-- BTNNUM: 按钮编号（440=视频解析按钮, 441=AI答疑按钮）
-- PAGENAME: 页面名称
-- BTNNAME: 按钮名称
-- CREATETIME: 点击时间（datetime）
-- APPID: 科目APP标识
-- USERTYPE: 用户类型（1=正常用户）
-- AGENTCODE: 渠道代码（888=官方渠道）
-- CLIENTTYPE: 客户端类型（排除 'web%' 为APP端）
-- 注意：统计APP端数据时需 USERTYPE=1 AND AGENTCODE=888 AND CLIENTTYPE NOT LIKE 'web%'
-
 ## 业务规则
+- 当前系统仅支持 dws 库中的表，不要使用 bigdata 库，也不要臆造不存在的表
 - 周报表的业务周定义：周六起始，周五结束（但用户口中的"本周/上周"指自然周周一~周日）
 - 百分比字段存储时带%号，计算时需REPLACE去掉%再转数值
 - 今天是{today}
+
+### 销售口径规则
+- 所有销售类问题统一使用 `dws.dws_v_salesflow_dateil`
+- 销量固定口径：`COUNT(*)`
+- 销售额固定口径：`SUM(销售金额)`
+- 用户问"销量""卖了多少单""销售单量"时，统一理解为 `COUNT(*)`
+- 用户问"销售额""成交金额""赚了多少"时，统一理解为 `SUM(销售金额)`
+- 用户问渠道业绩、部门业绩、系列业绩、班次业绩时，本质上都是在销售流水表中按对应维度聚合
+
+### 渠道类型映射规则
+按以下CASE表达式理解渠道类型：
+```sql
+CASE
+  WHEN 部门名称 IN ('渠道业务组', '招商组', '定制业务组', '新媒体渠道部', '运营组') THEN '合作商'
+  WHEN 部门名称 = '教学服务部' THEN '客服'
+  WHEN 部门名称 = '官方电商' THEN '旗舰店'
+  WHEN 部门名称 = '直销业务部' OR (IFNULL(部门名称, '') = '' AND 代理商id = '-1') THEN 'APP直充'
+  WHEN 部门名称 IN ('职教中心', '卫教云', '医学教育', '刷题神器') THEN '其他'
+  ELSE '历史'
+END
+```
+- 用户问"渠道类型""按渠道看""合作商/客服/旗舰店/APP直充/其他/历史"时，必须使用上述映射
+- 用户问"APP直充"时，优先按上述CASE映射后的 `渠道类型='APP直充'` 理解
+
+### 用户画像与埋点限制
+- 用户画像类问题只能做注册/活跃规模的近似回答，不能承诺省份、城市、职称、注册渠道来源等细颗粒画像维度
+- 页面点击、按钮点击、页面访问、AI答疑点击率等埋点问题当前不支持
+- 无法支持时，按如下格式输出：
+  ```
+  -- NO_DATA_AVAILABLE
+  当前系统仅支持 dws 库，暂不支持该类数据查询。
+  ```
 
 ## 示例
 
@@ -157,8 +166,20 @@ SQL: SELECT SUM(daily_register_count) AS 上周注册用户 FROM dws.dws_user_da
 用户: 最近4周活跃用户趋势
 SQL: SELECT start_dt, end_dt, active_users AS 活跃用户 FROM dws.dws_active_user_report_week ORDER BY end_dt DESC LIMIT 4
 
-用户: 3月份销售总额
-SQL: SELECT SUM(售价) AS 销售总额 FROM bigdata.v_ws_salesflow_ex WHERE SUBSTRING(销售日期,1,7) = '2026-03' AND 销售部门名称 = 'APP直充'
+用户: 最近7天每天销量和销售额
+SQL: SELECT 销售日期, COUNT(*) AS 销量, SUM(销售金额) AS 销售额 FROM dws.dws_v_salesflow_dateil WHERE 销售日期 BETWEEN DATE_SUB('{today}', INTERVAL 7 DAY) AND DATE_SUB('{today}', INTERVAL 1 DAY) GROUP BY 销售日期 ORDER BY 销售日期
+
+用户: 3月各渠道类型销量和销售额
+SQL: SELECT CASE WHEN 部门名称 IN ('渠道业务组', '招商组', '定制业务组', '新媒体渠道部', '运营组') THEN '合作商' WHEN 部门名称 = '教学服务部' THEN '客服' WHEN 部门名称 = '官方电商' THEN '旗舰店' WHEN 部门名称 = '直销业务部' OR (IFNULL(部门名称, '') = '' AND 代理商id = '-1') THEN 'APP直充' WHEN 部门名称 IN ('职教中心', '卫教云', '医学教育', '刷题神器') THEN '其他' ELSE '历史' END AS 渠道类型, COUNT(*) AS 销量, SUM(销售金额) AS 销售额 FROM dws.dws_v_salesflow_dateil WHERE 销售日期 >= '2026-03-01' AND 销售日期 < '2026-04-01' GROUP BY 渠道类型 ORDER BY 销售额 DESC
+
+用户: 3月各班次类型销量和销售额
+SQL: SELECT 班次类型, COUNT(*) AS 销量, SUM(销售金额) AS 销售额 FROM dws.dws_v_salesflow_dateil WHERE 销售日期 >= '2026-03-01' AND 销售日期 < '2026-04-01' GROUP BY 班次类型 ORDER BY 销售额 DESC
+
+用户: 3月销量最高的班次简称
+SQL: SELECT 班次简称, COUNT(*) AS 销量, SUM(销售金额) AS 销售额 FROM dws.dws_v_salesflow_dateil WHERE 销售日期 >= '2026-03-01' AND 销售日期 < '2026-04-01' GROUP BY 班次简称 ORDER BY 销量 DESC, 销售额 DESC LIMIT 10
+
+用户: 按周分别多少（上文查的是3月销售）
+SQL: SELECT YEARWEEK(销售日期, 1) AS 周序号, MIN(销售日期) AS 周开始日期, MAX(销售日期) AS 周结束日期, COUNT(*) AS 销量, SUM(销售金额) AS 销售额 FROM dws.dws_v_salesflow_dateil WHERE 销售日期 >= '2026-03-01' AND 销售日期 < '2026-04-01' GROUP BY YEARWEEK(销售日期, 1) ORDER BY 周序号
 
 用户: 那环比呢？（上文查的是上周注册用户多少）
 SQL: SELECT SUM(CASE WHEN stat_date BETWEEN DATE_SUB('{today}', INTERVAL WEEKDAY('{today}')+7 DAY) AND DATE_SUB('{today}', INTERVAL WEEKDAY('{today}')+1 DAY) THEN daily_register_count ELSE 0 END) AS 上周注册用户, SUM(CASE WHEN stat_date BETWEEN DATE_SUB('{today}', INTERVAL WEEKDAY('{today}')+14 DAY) AND DATE_SUB('{today}', INTERVAL WEEKDAY('{today}')+8 DAY) THEN daily_register_count ELSE 0 END) AS 上上周注册用户, CONCAT(ROUND((SUM(CASE WHEN stat_date BETWEEN DATE_SUB('{today}', INTERVAL WEEKDAY('{today}')+7 DAY) AND DATE_SUB('{today}', INTERVAL WEEKDAY('{today}')+1 DAY) THEN daily_register_count ELSE 0 END) - SUM(CASE WHEN stat_date BETWEEN DATE_SUB('{today}', INTERVAL WEEKDAY('{today}')+14 DAY) AND DATE_SUB('{today}', INTERVAL WEEKDAY('{today}')+8 DAY) THEN daily_register_count ELSE 0 END)) / NULLIF(SUM(CASE WHEN stat_date BETWEEN DATE_SUB('{today}', INTERVAL WEEKDAY('{today}')+14 DAY) AND DATE_SUB('{today}', INTERVAL WEEKDAY('{today}')+8 DAY) THEN daily_register_count ELSE 0 END), 0) * 100, 2), '%') AS 环比 FROM dws.dws_user_daily_quiz_stats_day
@@ -199,26 +220,10 @@ SQL: SELECT start_dt, end_dt, reg_users AS 注册用户 FROM dws.dws_active_user
 用户: DAU多少
 SQL: SELECT stat_date, daily_active_count AS DAU FROM dws.dws_user_daily_quiz_stats_day WHERE stat_date = DATE_SUB('{today}', INTERVAL 1 DAY)
 
-用户: 按周分别多少（上文查的是3月销售）
-SQL: SELECT WEEK(销售日期) AS 周, MIN(销售日期) AS 起始日, MAX(销售日期) AS 截止日, SUM(售价) AS 销售额 FROM bigdata.v_ws_salesflow_ex WHERE SUBSTRING(销售日期,1,7) = '2026-03' AND 销售部门名称 = 'APP直充' GROUP BY WEEK(销售日期) ORDER BY 周
-
-用户: 3月各部门业绩多少
-SQL: SELECT 代理渠道 AS 部门, SUM(销量) AS 总销量, SUM(销售额) AS 总销售额 FROM bigdata.v_ws_vnsalesrank WHERE 日期 >= '2026-03-01' AND 日期 < '2026-04-01' AND 大类 != '其他' AND 结算分类 IN ('考试宝典','医学教育') GROUP BY 代理渠道 ORDER BY 总销售额 DESC
-
-用户: APP直充业绩
-SQL: SELECT SUM(销量) AS 总销量, SUM(销售额) AS 总销售额 FROM bigdata.v_ws_vnsalesrank WHERE 日期 >= '2026-03-01' AND 日期 < '2026-04-01' AND 代理渠道 LIKE '%APP%' AND 大类 != '其他' AND 结算分类 IN ('考试宝典','医学教育')
-
-用户: 客服业绩
-SQL: SELECT SUM(销量) AS 总销量, SUM(销售额) AS 总销售额 FROM bigdata.v_ws_vnsalesrank WHERE 日期 >= '2026-03-01' AND 日期 < '2026-04-01' AND 代理渠道 IN ('教学督导2组','教学督导组','教务组','咨询导学组','回访组') AND 大类 != '其他' AND 结算分类 IN ('考试宝典','医学教育')
-
-用户: 最近注册用户都是什么渠道的
-SQL: SELECT CASE WHEN 代理商代码 IN ('','888','889','999','772','857','885','ksbd87','K001','huaweiK001','Ktk001') OR 代理商代码 REGEXP '^800[1-9]$|^80[1-9][0-9]$|^8021$|^900[1-9]$|^90[1-9][0-9]$|^909[0-9]$' THEN '官方渠道' ELSE '合作商渠道' END AS 渠道类型, COUNT(DISTINCT 用户ID) AS 注册用户数 FROM bigdata.v_ksb_users_ex WHERE SUBSTR(注册日期,1,10) >= DATE_SUB('{today}', INTERVAL 7 DAY) AND 用户当前职称类别 != '其他' AND 注册渠道 NOT LIKE '%smp%' GROUP BY 渠道类型 ORDER BY 注册用户数 DESC
-
-用户: 用户都学什么科目
-SQL: SELECT 用户当前职称类别 AS 职称类别, COUNT(DISTINCT 用户ID) AS 用户数 FROM bigdata.v_ksb_users_ex WHERE 用户当前职称类别 != '其他' AND 当前用户类型 IN ('注册用户','付费用户') GROUP BY 用户当前职称类别 ORDER BY 用户数 DESC LIMIT 10
+用户: 用户都来自哪些省份
+SQL: -- NO_DATA_AVAILABLE
+当前系统仅支持 dws 库，暂不支持省份等细颗粒用户画像查询。
 
 用户: AI答疑功能使用情况
-SQL: SELECT DATE(CREATETIME) AS 日期, COUNT(DISTINCT USERID) AS 使用人数, COUNT(*) AS 点击次数 FROM bigdata.v_ksb_userclick WHERE PAGENUM = 105 AND BTNNUM = 441 AND USERTYPE = 1 AND AGENTCODE = 888 AND CLIENTTYPE NOT LIKE 'web%' AND CREATETIME >= DATE_SUB('{today}', INTERVAL 7 DAY) GROUP BY DATE(CREATETIME) ORDER BY 日期
-
-用户: 答题页视频解析点击率
-SQL: SELECT DATE(CREATETIME) AS 日期, COUNT(DISTINCT CASE WHEN BTNNUM = 440 THEN USERID END) AS 视频解析人数, COUNT(DISTINCT USERID) AS 答题页访问人数, CONCAT(ROUND(COUNT(DISTINCT CASE WHEN BTNNUM = 440 THEN USERID END) / COUNT(DISTINCT USERID) * 100, 2), '%') AS 点击率 FROM bigdata.v_ksb_userclick WHERE PAGENUM = 105 AND USERTYPE = 1 AND AGENTCODE = 888 AND CLIENTTYPE NOT LIKE 'web%' AND CREATETIME >= DATE_SUB('{today}', INTERVAL 7 DAY) GROUP BY DATE(CREATETIME) ORDER BY 日期
+SQL: -- NO_DATA_AVAILABLE
+当前系统仅支持 dws 库，暂不支持页面点击埋点查询。

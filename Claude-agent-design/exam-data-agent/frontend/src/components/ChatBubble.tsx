@@ -1,6 +1,7 @@
 import { Table, Typography } from "antd";
 import { useMemo, type ReactNode } from "react";
-import SimpleChart from "./SimpleChart";
+import * as XLSX from "xlsx";
+import ChatChart from "./ChatChart";
 
 const { Text } = Typography;
 
@@ -15,6 +16,10 @@ interface Props {
 /** Detect if a string is purely numeric (int / float / percentage) */
 function isNumeric(v: string): boolean {
   return /^-?[\d,]+(\.\d+)?%?$/.test(v.trim());
+}
+
+function parseNumericValue(v: string): number {
+  return Number.parseFloat(v.trim().replace(/[,%]/g, ""));
 }
 
 /** Format cell value: highlight numbers, detect trend arrows */
@@ -48,22 +53,41 @@ function renderInsightText(text: string): ReactNode {
   );
 }
 
-/** Try to extract chart-friendly data from a table (label col + numeric col) */
+/** Try to extract chart-friendly data from a table (label col + numeric cols) */
 function extractChartData(table: { columns: string[]; rows: string[][] }) {
   if (table.columns.length < 2 || table.rows.length < 2) return null;
-  // Find first numeric column (skip label column)
-  let labelIdx = 0;
-  let valueIdx = -1;
-  for (let j = 1; j < table.columns.length; j++) {
-    const allNumeric = table.rows.every((row) => isNumeric(row[j] || "0"));
-    if (allNumeric) { valueIdx = j; break; }
-  }
-  if (valueIdx === -1) return null;
-  const labels = table.rows.map((r) => r[labelIdx] || "");
-  const data = table.rows.map((r) => parseFloat((r[valueIdx] || "0").replace(/,/g, "")));
+
+  const labelIdx = 0;
+  const labels = table.rows.map((row) => row[labelIdx] || "");
+  const series = table.columns
+    .map((column, index) => {
+      if (index === labelIdx) return null;
+
+      const values = table.rows.map((row) => row[index] ?? "");
+      const allNumeric = values.every((value) => isNumeric(value));
+      if (!allNumeric) return null;
+
+      return {
+        name: column,
+        data: values.map((value) => parseNumericValue(value)),
+      };
+    })
+    .filter((item): item is { name: string; data: number[] } => item !== null);
+
+  if (series.length === 0) return null;
+
   // Determine chart type: time series → line, categories → bar
-  const isTimeSeries = labels.some((l) => /\d{4}[-/]\d{2}/.test(l));
-  return { labels, data, type: (isTimeSeries ? "line" : "bar") as "line" | "bar" };
+  const isTimeSeries = labels.some((label) => /\d{4}[-/]\d{2}/.test(label));
+  return {
+    labels,
+    series,
+    type: (isTimeSeries ? "line" : "bar") as "line" | "bar",
+  };
+}
+
+function formatExportFileName(date: Date): string {
+  const pad = (value: number) => String(value).padStart(2, "0");
+  return `典宝数据_${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}_${pad(date.getHours())}-${pad(date.getMinutes())}.xlsx`;
 }
 
 export default function ChatBubble({ role, content, table, statusText, error }: Props) {
@@ -73,6 +97,17 @@ export default function ChatBubble({ role, content, table, statusText, error }: 
     if (!table || table.rows.length === 0) return null;
     return extractChartData(table);
   }, [table]);
+
+  const canDownloadTable = Boolean(table && table.columns.length > 0 && table.rows.length > 0);
+
+  const handleDownloadXlsx = () => {
+    if (!table || table.columns.length === 0 || table.rows.length === 0) return;
+
+    const worksheet = XLSX.utils.aoa_to_sheet([table.columns, ...table.rows]);
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, "数据");
+    XLSX.writeFile(workbook, formatExportFileName(new Date()));
+  };
 
   return (
     <div className={`message ${isUser ? "user-msg" : "ai-msg"}`}>
@@ -113,9 +148,36 @@ export default function ChatBubble({ role, content, table, statusText, error }: 
           </Text>
         ))}
 
-      {/* 2.5 Auto chart from table data */}
+      {/* 2.5 Download current table as XLSX */}
+      {canDownloadTable && (
+        <div
+          style={{
+            margin: chartData ? "12px 0" : "12px 0 0",
+            display: "flex",
+            justifyContent: "flex-end",
+          }}
+        >
+          <button
+            type="button"
+            onClick={handleDownloadXlsx}
+            style={{
+              border: "1px solid #d9eaf0",
+              borderRadius: 8,
+              background: "#f7fdff",
+              color: "#1677ff",
+              padding: "6px 12px",
+              fontSize: 13,
+              cursor: "pointer",
+            }}
+          >
+            下载 XLSX
+          </button>
+        </div>
+      )}
+
+      {/* 2.6 Auto chart from table data */}
       {chartData && (
-        <SimpleChart type={chartData.type} labels={chartData.labels} data={chartData.data} />
+        <ChatChart type={chartData.type} labels={chartData.labels} series={chartData.series} />
       )}
 
       {/* 3. Insight text with number highlighting */}

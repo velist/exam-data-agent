@@ -107,7 +107,7 @@ status(understanding) → status(generating_sql) → status(querying)
 | 组件 | 说明 | 文件 |
 |------|------|------|
 | 数据表格 | Ant Design Table + 数字高亮 + 交替行 + 趋势指标 | `ChatBubble.tsx` |
-| 自动图表 | Canvas 折线图/柱状图，从表格数据自动生成 | `SimpleChart.tsx` |
+| 对话图表 | 基于 ECharts 的多系列图表，支持 tooltip / legend，由 `ChatBubble.tsx` 承载容器与 XLSX 下载 | `ChatChart.tsx` |
 | 洞察文本 | 数字自动蓝色高亮，行高 1.8 可读排版 | `ChatBubble.tsx` |
 
 样式参考：`考宝1.2-组件预览.html`，设计规范：`考宝1.2-设计规范.md`
@@ -185,7 +185,7 @@ docker run -p 8230:8230 --env-file backend/.env kaobao-agent
 | `dws.dws_pay_user_report_week` | 周付费 | pay_users, pay_conv_rate, repurchase_rate, arpu |
 | `dws.dws_retention_user_report_week` | 周留存 | n1_ret_rate, w_ret_rate |
 | `dws.dws_user_behavior_report_week` | 周行为 | quiz_part_rate, mock_part_rate, course_part_rate |
-| `bigdata.v_ws_salesflow_ex` | 销售流水 | 售价, 销售日期, 销售部门名称 |
+| `dws.dws_v_salesflow_dateil` | 销售流水 | 销售金额, 销售日期, 部门名称 |
 | `dws.dws_customer_service` | 客服进线 | question_type, question_theme, submit_time |
 
 业务周定义：周六 ~ 周五。
@@ -235,8 +235,8 @@ exam-data-agent/
     │   │   ├── Report.tsx       # 报告页
     │   │   └── chatMessageUtils.ts  # 消息状态纯函数
     │   ├── components/
-    │   │   ├── ChatBubble.tsx   # 聊天气泡（表格+图表+洞察）
-    │   │   ├── SimpleChart.tsx  # Canvas 图表（折线/柱状）
+    │   │   ├── ChatBubble.tsx   # 聊天气泡（表格+图表容器+XLSX下载+洞察）
+    │   │   ├── ChatChart.tsx    # ECharts 对话图表渲染（多系列/tooltip/legend）
     │   │   ├── MetricCard.tsx   # KPI 卡片
     │   │   ├── TrendChart.tsx   # 趋势图
     │   │   └── InsightText.tsx  # AI 洞察
