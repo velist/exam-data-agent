@@ -397,9 +397,9 @@ body {
 
 /* ---- Messages ---- */
 .message {
-  max-width: 85%;
-  padding: 12px 16px;
-  border-radius: 16px;
+  max-width: 100%;
+  padding: 12px 0;
+  border-bottom: 1px solid rgba(0,0,0,0.06);
   font-size: 15px;
   line-height: 1.5;
   animation: slideUp 0.3s ease;
@@ -413,30 +413,31 @@ body {
 }
 
 .ai-msg {
-  background: rgba(255,255,255,0.72);
-  backdrop-filter: blur(14px);
-  -webkit-backdrop-filter: blur(14px);
   align-self: flex-start;
-  border-bottom-left-radius: 4px;
-  box-shadow: 0 8px 20px rgba(15, 23, 42, 0.06);
-  border: 1px solid rgba(255,255,255,0.55);
   color: #333;
 }
 .ai-msg.guide-message {
   width: 100%;
   max-width: 100%;
-  padding: 16px;
+  padding: 12px 0;
 }
 
 .user-msg {
-  background: rgba(0, 180, 216, 0.88);
-  backdrop-filter: blur(14px);
-  -webkit-backdrop-filter: blur(14px);
-  color: white;
-  align-self: flex-end;
-  border-bottom-right-radius: 4px;
-  box-shadow: 0 10px 24px rgba(0, 180, 216, 0.18);
-  border: 1px solid rgba(255,255,255,0.18);
+  align-self: flex-start;
+  color: #555;
+}
+
+/* ---- Role Label ---- */
+.msg-role-label {
+  font-size: 13px;
+  font-weight: 600;
+  margin-bottom: 4px;
+}
+.msg-role-label.role-user {
+  color: #888;
+}
+.msg-role-label.role-ai {
+  color: #0077B6;
 }
 
 /* ---- Status indicator in message ---- */
@@ -872,7 +873,7 @@ body {
     padding: 24px 15%;
   }
   .message {
-    max-width: 75%;
+    max-width: 100%;
     font-size: 16px;
   }
   .vh-section-mini {
@@ -981,7 +982,7 @@ body {
 
   .chat-area { padding: 16px 16px; }
   .input-bar { padding: 12px 12px calc(12px + env(safe-area-inset-bottom, 0px)); }
-  .message { max-width: 92%; }
+  .message { max-width: 100%; }
 
   .chart-body {
     height: auto;
