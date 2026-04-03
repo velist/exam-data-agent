@@ -773,9 +773,9 @@ body {
   font-weight: 700;
   font-size: 1.1em;
 }
-.trend-up { color: #10B981; font-weight: 600; }
+.trend-up { color: #EF4444; font-weight: 600; }
 .trend-up::before { content: "↑ "; }
-.trend-down { color: #EF4444; font-weight: 600; }
+.trend-down { color: #10B981; font-weight: 600; }
 .trend-down::before { content: "↓ "; }
 .tag-status {
   display: inline-block;

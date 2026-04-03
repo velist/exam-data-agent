@@ -12,8 +12,8 @@
   --report-text-body: #334155;
   --report-text-muted: #6e7e85;
   --report-text-soft: #94a3b8;
-  --report-success: #10b981;
-  --report-danger: #ef4444;
+  --report-success: #ef4444;
+  --report-danger: #10b981;
 }
 
 .report-page {
@@ -423,15 +423,15 @@
 }
 
 .metric-card__change--up {
-  color: var(--report-success);
-  background: rgba(16, 185, 129, 0.1);
-  border-color: rgba(16, 185, 129, 0.18);
+  color: #ef4444;
+  background: rgba(239, 68, 68, 0.1);
+  border-color: rgba(239, 68, 68, 0.18);
 }
 
 .metric-card__change--down {
-  color: var(--report-danger);
-  background: rgba(239, 68, 68, 0.1);
-  border-color: rgba(239, 68, 68, 0.18);
+  color: #10b981;
+  background: rgba(16, 185, 129, 0.1);
+  border-color: rgba(16, 185, 129, 0.18);
 }
 
 .metric-card__change--neutral {

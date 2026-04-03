@@ -1,5 +1,6 @@
 import { useMemo } from "react";
 import ReactECharts from "echarts-for-react";
+import { getColumnLabel } from "./ChatBubble";
 
 interface ChatChartProps {
   type: "line" | "bar";
@@ -56,9 +57,10 @@ export default function ChatChart({ type, labels, series }: ChatChartProps) {
         axisLabel: { color: "#94a3b8" },
       },
       series: series.map((item, index) => {
+        const label = getColumnLabel(item.name);
         if (type === "bar") {
           return {
-            name: item.name,
+            name: label,
             type: "bar" as const,
             data: item.data,
             barMaxWidth: 28,
@@ -69,7 +71,7 @@ export default function ChatChart({ type, labels, series }: ChatChartProps) {
         }
 
         return {
-          name: item.name,
+          name: label,
           type: "line" as const,
           data: item.data,
           smooth: true,

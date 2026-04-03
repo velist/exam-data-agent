@@ -7,29 +7,61 @@ const { Text } = Typography;
 
 /** SQL column name → Chinese display name */
 const COLUMN_LABEL: Record<string, string> = {
+  // 日期时间
   start_dt: "开始日期",
   end_dt: "结束日期",
+  stat_date: "统计日期",
   order_date: "订单日期",
   pay_date: "付款日期",
   create_time: "创建时间",
   update_time: "更新时间",
+  // 产品
   product_name: "产品名称",
   product_type: "产品类型",
+  series_name: "系列名称",
   class_type: "班次类型",
   class_name: "班次名称",
+  // 销售
   sale_amount: "销售金额",
   sale_count: "销量",
   total_amount: "总金额",
   refund_amount: "退款金额",
+  channel_name: "渠道名称",
+  channel_type: "渠道类型",
+  // 用户基础
   user_count: "用户数",
   reg_count: "注册数",
+  reg_users: "注册用户",
+  active_users: "活跃用户",
+  valid_active_users: "有效活跃用户",
+  daily_register_count: "日注册数",
+  daily_active_count: "日活跃数",
+  // 付费
   pay_count: "付费数",
-  channel_name: "渠道名称",
+  pay_users: "付费用户",
+  pay_conv_rate: "付费转化率",
+  repurchase_rate: "复购率",
+  arpu: "ARPU",
+  // 留存
+  n1_ret_rate: "次日留存率",
+  w_ret_rate: "周留存率",
+  // 行为
+  quiz_part_rate: "答题参与率",
+  mock_part_rate: "模考参与率",
+  course_part_rate: "课程参与率",
+  avg_play_progress: "人均播放进度",
+  quiz_rate: "人均刷题量",
+  daily_avg_exam: "人均刷题数",
+  // 地理
   province: "省份",
   city: "城市",
+  // 客服
+  theme: "问题主题",
+  ticket_count: "工单数",
+  avg_response_time: "平均响应时间",
 };
 
-function getColumnLabel(col: string): string {
+export function getColumnLabel(col: string): string {
   return COLUMN_LABEL[col] ?? col;
 }
 
