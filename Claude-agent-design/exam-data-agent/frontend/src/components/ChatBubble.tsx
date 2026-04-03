@@ -111,6 +111,11 @@ export default function ChatBubble({ role, content, table, statusText, error }: 
 
   return (
     <div className={`message ${isUser ? "user-msg" : "ai-msg"}`}>
+      {/* 0. Role label */}
+      <div className={`msg-role-label ${isUser ? "role-user" : "role-ai"}`}>
+        {isUser ? "你" : "典宝"}
+      </div>
+
       {/* 1. Status indicator */}
       {statusText && (
         <div className="msg-status">

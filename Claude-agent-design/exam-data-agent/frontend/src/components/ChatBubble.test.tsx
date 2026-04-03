@@ -52,4 +52,14 @@ describe("ChatBubble", () => {
 
     expect(container.textContent).toContain("上周注册用户多少");
   });
+
+  it("renders role label '典宝' for assistant messages", () => {
+    render(<ChatBubble role="assistant" content="测试回复" />);
+    expect(screen.getByText("典宝")).toBeInTheDocument();
+  });
+
+  it("renders role label '你' for user messages", () => {
+    render(<ChatBubble role="user" content="测试提问" />);
+    expect(screen.getByText("你")).toBeInTheDocument();
+  });
 });
