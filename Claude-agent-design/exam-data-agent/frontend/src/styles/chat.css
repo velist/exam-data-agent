@@ -1,6 +1,6 @@
 /* ============================================
    典宝 AI 助手 — Chat Page Styles
-   断点: 768px | 移动端满屏 / PC端圆角容器
+   断点: 768px | 全屏满铺布局
    ============================================ */
 
 :root {
@@ -21,10 +21,10 @@
 *::before, *::after { box-sizing: border-box; }
 
 html, body { width: 100%; min-height: 100%; }
-#root { width: 100%; min-height: 100vh; min-height: 100dvh; display: flex; justify-content: center; align-items: center; }
+#root { width: 100%; min-height: 100vh; min-height: 100dvh; display: flex; justify-content: center; align-items: stretch; }
 body {
   font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Helvetica Neue", sans-serif;
-  background: #E0EAEB;
+  background: #FFFFFF;
   min-height: 100vh;
   min-height: 100dvh;
   overflow-x: hidden;
@@ -39,7 +39,6 @@ body {
   position: relative;
   display: flex;
   flex-direction: column;
-  box-shadow: 0 20px 60px rgba(0,0,0,0.1);
   overflow: hidden;
   overflow-x: hidden;
   margin: 0 auto;
@@ -809,14 +808,11 @@ body {
    PC & Tablet Layout (>=768px)
    ============================================ */
 @media (min-width: 768px) {
-  body {
-    padding: 40px;
-  }
   .app-container {
-    max-width: 1200px;
-    height: 90vh;
-    min-height: 700px;
-    border-radius: 24px;
+    max-width: 100%;
+    height: 100vh;
+    height: 100dvh;
+    border-radius: 0;
   }
 
   /* Landing: 左右双栏 */

@@ -1,0 +1,14 @@
+{
+  "ts": 1774679268.566851,
+  "sql": "SELECT SUM(daily_register_count) AS 上周注册用户 FROM dws.dws_user_daily_quiz_stats_day WHERE stat_date BETWEEN DATE_SUB('2026-03-28', INTERVAL WEEKDAY('2026-03-28')+7 DAY) AND DATE_SUB('2026-03-28', INTERVAL WEEKDAY('2026-03-28')+1 DAY)",
+  "result": {
+    "columns": [
+      "上周注册用户"
+    ],
+    "rows": [
+      [
+        "6026"
+      ]
+    ]
+  }
+}

@@ -1,7 +1,38 @@
 [
   {
-    "key": "e94c877688bbc034",
-    "sql": "SELECT SUBSTRING(销售日期,1,7) AS 月份, SUM(售价) AS 销售总额 FROM bigdata.v_ws_salesflow_ex WHERE SUBSTRING(销售日期,1,7) = '2026-02' AND 销售部门名称 = 'APP直充' GROUP BY SUBSTRING(销售日期,1,7)",
-    "ts": 1774614298.2532206
+    "key": "1a231f56df453943",
+    "sql": "SELECT SUM(daily_register_count) AS 上周注册用户 FROM dws.dws_user_daily_quiz_stats_day WHERE stat_date BETWEEN DATE_SUB('2026-03-28', INTERVAL WEEKDAY('2026-03-28')+7 DAY) AND DATE_SUB('2026-03-28', INTERVAL WEEKDAY('2026-03-28')+1 DAY)",
+    "ts": 1774679268.566851,
+    "type": "query"
+  },
+  {
+    "key": "873d4e00661034f9",
+    "sql": "SELECT stat_date, daily_register_count AS 注册用户 FROM dws.dws_user_daily_quiz_stats_day WHERE stat_date BETWEEN DATE_SUB('2026-03-30', INTERVAL WEEKDAY('2026-03-30') DAY) AND DATE_SUB('2026-03-30', INTERVAL 1 DAY) ORDER BY stat_date",
+    "ts": 1774836318.01775,
+    "type": "query"
+  },
+  {
+    "key": "8c396006d1fc9481",
+    "sql": "SELECT * FROM dws.dws_active_user_report_week",
+    "ts": 1774635463.3748696,
+    "type": "query"
+  },
+  {
+    "key": "9258d24498e1fb73",
+    "sql": "SELECT start_dt, end_dt, pay_conv_rate AS 付费转化率 FROM dws.dws_pay_user_report_week ORDER BY end_dt DESC LIMIT 4",
+    "ts": 1774679239.8441284,
+    "type": "query"
+  },
+  {
+    "key": "a7a3d34212bc53c0",
+    "sql": "SELECT stat_date, daily_register_count AS 注册用户 FROM dws.dws_user_daily_quiz_stats_day WHERE stat_date BETWEEN DATE_SUB('2026-03-28', INTERVAL WEEKDAY('2026-03-28') DAY) AND DATE_SUB('2026-03-28', INTERVAL 1 DAY) ORDER BY stat_date",
+    "ts": 1774676102.6953447,
+    "type": "query"
+  },
+  {
+    "key": "e004ebd5b5532a4b",
+    "sql": "SELECT 1",
+    "ts": 1774635528.2316506,
+    "type": "query"
   }
 ]

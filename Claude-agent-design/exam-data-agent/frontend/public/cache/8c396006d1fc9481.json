@@ -1,0 +1,10 @@
+{
+  "ts": 1774635463.3748696,
+  "sql": "SELECT * FROM dws.dws_active_user_report_week",
+  "result": {
+    "columns": [
+      "注册用户"
+    ],
+    "rows": []
+  }
+}

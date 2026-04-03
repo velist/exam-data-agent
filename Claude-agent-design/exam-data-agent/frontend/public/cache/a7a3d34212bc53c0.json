@@ -1,0 +1,32 @@
+{
+  "ts": 1774676102.6953447,
+  "sql": "SELECT stat_date, daily_register_count AS 注册用户 FROM dws.dws_user_daily_quiz_stats_day WHERE stat_date BETWEEN DATE_SUB('2026-03-28', INTERVAL WEEKDAY('2026-03-28') DAY) AND DATE_SUB('2026-03-28', INTERVAL 1 DAY) ORDER BY stat_date",
+  "result": {
+    "columns": [
+      "stat_date",
+      "注册用户"
+    ],
+    "rows": [
+      [
+        "2026-03-23",
+        "848"
+      ],
+      [
+        "2026-03-24",
+        "939"
+      ],
+      [
+        "2026-03-25",
+        "988"
+      ],
+      [
+        "2026-03-26",
+        "865"
+      ],
+      [
+        "2026-03-27",
+        "712"
+      ]
+    ]
+  }
+}

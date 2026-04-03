@@ -5,6 +5,34 @@ import ChatChart from "./ChatChart";
 
 const { Text } = Typography;
 
+/** SQL column name → Chinese display name */
+const COLUMN_LABEL: Record<string, string> = {
+  start_dt: "开始日期",
+  end_dt: "结束日期",
+  order_date: "订单日期",
+  pay_date: "付款日期",
+  create_time: "创建时间",
+  update_time: "更新时间",
+  product_name: "产品名称",
+  product_type: "产品类型",
+  class_type: "班次类型",
+  class_name: "班次名称",
+  sale_amount: "销售金额",
+  sale_count: "销量",
+  total_amount: "总金额",
+  refund_amount: "退款金额",
+  user_count: "用户数",
+  reg_count: "注册数",
+  pay_count: "付费数",
+  channel_name: "渠道名称",
+  province: "省份",
+  city: "城市",
+};
+
+function getColumnLabel(col: string): string {
+  return COLUMN_LABEL[col] ?? col;
+}
+
 interface Props {
   role: "user" | "assistant";
   content: string;
@@ -140,7 +168,7 @@ export default function ChatBubble({ role, content, table, statusText, error }: 
                 return obj;
               })}
               columns={table.columns.map((col) => ({
-                title: col,
+                title: getColumnLabel(col),
                 dataIndex: col,
                 key: col,
                 render: (val: string) => formatCellValue(val),

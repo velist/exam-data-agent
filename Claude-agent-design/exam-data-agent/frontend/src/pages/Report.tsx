@@ -64,7 +64,13 @@ export default function Report() {
   );
   const [monthlyMode, setMonthlyMode] = useState<"month" | "range">("month");
   const [selectedDate, setSelectedDate] = useState(dayjs());
-  const [month, setMonth] = useState(dayjs().format("YYYY-MM"));
+  const [month, setMonth] = useState(() => {
+    const today = dayjs();
+    // 每月15号前默认显示上月，15号及以后显示当月
+    return today.date() < 15
+      ? today.subtract(1, "month").format("YYYY-MM")
+      : today.format("YYYY-MM");
+  });
   const [range, setRange] = useState<[Dayjs, Dayjs]>([dayjs().subtract(29, "day"), dayjs()]);
   const [report, setReport] = useState<ReportResponse | null>(null);
   const [loading, setLoading] = useState(false);
