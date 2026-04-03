@@ -12,12 +12,14 @@ from services.chat import chat
 from services.chat_stream import stream_chat_events
 from services.report import get_weekly_report, get_monthly_report, get_range_report
 from services.report_cache import init_cache
+from services.dataset_cache import init_dataset_cache
 from services.insight import stream_insight
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     init_cache()
+    init_dataset_cache()
     yield
 
 

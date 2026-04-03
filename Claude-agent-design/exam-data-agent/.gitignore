@@ -4,3 +4,14 @@ __pycache__/
 node_modules/
 dist/
 .vite/
+
+# 运行时产物
+backend/data/dataset_cache.json
+backend/data/query_cache/
+
+# 工作临时文件
+.playwright-mcp/
+.wrangler/
+*.log
+*.err.log
+*.png

@@ -93,15 +93,13 @@
 ### dws.dws_v_salesflow_dateil（销售流水明细 — 所有销售类问题统一从这张表查询）
 - 销售日期：销售发生的具体日期
 - 销售金额：订单销售金额；销售额口径固定为 `SUM(销售金额)`
-- 部门名称：责任部门，用于识别渠道归属
-- 代理商id：渠道识别辅助字段；当 `部门名称='' 且 代理商id='-1'` 时归为 APP直充
-- 代理商城市：区域分析维度
+- 渠道类型：视图已有字段，取值为 `合作商` / `客服` / `旗舰店` / `APP直充` / `其他`，直接用 `WHERE 渠道类型 = '...'` 或 `GROUP BY 渠道类型` 即可，不需要 CASE 映射
+- 部门名称：责任部门
 - 代理商名称：合作方识别维度
+- 代理商城市：区域分析维度
 - 系列名称：产品系列，如高级职称、中级职称、执业药师
 - 班次类型：商品类型，固定按 `课程` / `题库` / `私教` 理解
 - 班次简称：商品简称
-- 班次具体名称：商品全称
-- 渠道类型：派生维度，不是原表字段，需要通过部门名称映射得到
 - 销量：业务口径固定为 `COUNT(*)`，不要使用其他口径替代
 
 ### dws.dws_customer_service（客服进线数据）
@@ -131,20 +129,11 @@
 - 用户问"销售额""成交金额""赚了多少"时，统一理解为 `SUM(销售金额)`
 - 用户问渠道业绩、部门业绩、系列业绩、班次业绩时，本质上都是在销售流水表中按对应维度聚合
 
-### 渠道类型映射规则
-按以下CASE表达式理解渠道类型：
-```sql
-CASE
-  WHEN 部门名称 IN ('渠道业务组', '招商组', '定制业务组', '新媒体渠道部', '运营组') THEN '合作商'
-  WHEN 部门名称 = '教学服务部' THEN '客服'
-  WHEN 部门名称 = '官方电商' THEN '旗舰店'
-  WHEN 部门名称 = '直销业务部' OR (IFNULL(部门名称, '') = '' AND 代理商id = '-1') THEN 'APP直充'
-  WHEN 部门名称 IN ('职教中心', '卫教云', '医学教育', '刷题神器') THEN '其他'
-  ELSE '历史'
-END
-```
-- 用户问"渠道类型""按渠道看""合作商/客服/旗舰店/APP直充/其他/历史"时，必须使用上述映射
-- 用户问"APP直充"时，优先按上述CASE映射后的 `渠道类型='APP直充'` 理解
+### 渠道类型使用规则
+视图 `dws_v_salesflow_dateil` 已包含 `渠道类型` 字段，取值为：合作商、客服、旗舰店、APP直充、其他。
+- 直接使用 `WHERE 渠道类型 = 'APP直充'` 即可，**不要使用 CASE 表达式重新映射**
+- 用户问"各渠道类型"时，直接 `GROUP BY 渠道类型`
+- 用户问"APP直充"时，直接 `WHERE 渠道类型 = 'APP直充'`
 
 ### 用户画像与埋点限制
 - 用户画像类问题只能做注册/活跃规模的近似回答，不能承诺省份、城市、职称、注册渠道来源等细颗粒画像维度
@@ -170,7 +159,7 @@ SQL: SELECT start_dt, end_dt, active_users AS 活跃用户 FROM dws.dws_active_u
 SQL: SELECT 销售日期, COUNT(*) AS 销量, SUM(销售金额) AS 销售额 FROM dws.dws_v_salesflow_dateil WHERE 销售日期 BETWEEN DATE_SUB('{today}', INTERVAL 7 DAY) AND DATE_SUB('{today}', INTERVAL 1 DAY) GROUP BY 销售日期 ORDER BY 销售日期
 
 用户: 3月各渠道类型销量和销售额
-SQL: SELECT CASE WHEN 部门名称 IN ('渠道业务组', '招商组', '定制业务组', '新媒体渠道部', '运营组') THEN '合作商' WHEN 部门名称 = '教学服务部' THEN '客服' WHEN 部门名称 = '官方电商' THEN '旗舰店' WHEN 部门名称 = '直销业务部' OR (IFNULL(部门名称, '') = '' AND 代理商id = '-1') THEN 'APP直充' WHEN 部门名称 IN ('职教中心', '卫教云', '医学教育', '刷题神器') THEN '其他' ELSE '历史' END AS 渠道类型, COUNT(*) AS 销量, SUM(销售金额) AS 销售额 FROM dws.dws_v_salesflow_dateil WHERE 销售日期 >= '2026-03-01' AND 销售日期 < '2026-04-01' GROUP BY 渠道类型 ORDER BY 销售额 DESC
+SQL: SELECT 渠道类型, COUNT(*) AS 销量, SUM(销售金额) AS 销售额 FROM dws.dws_v_salesflow_dateil WHERE 销售日期 >= '2026-03-01' AND 销售日期 < '2026-04-01' GROUP BY 渠道类型 ORDER BY 销售额 DESC
 
 用户: 3月各班次类型销量和销售额
 SQL: SELECT 班次类型, COUNT(*) AS 销量, SUM(销售金额) AS 销售额 FROM dws.dws_v_salesflow_dateil WHERE 销售日期 >= '2026-03-01' AND 销售日期 < '2026-04-01' GROUP BY 班次类型 ORDER BY 销售额 DESC

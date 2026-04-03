@@ -20,6 +20,7 @@ def _collect_events(gen):
 
 
 def test_stream_chat_success_sequence(monkeypatch):
+    monkeypatch.setattr(chat_stream, "try_route", lambda msg, hist: None)
     monkeypatch.setattr(chat_service, "_validate_input", lambda message: None)
     monkeypatch.setattr(chat_service, "_generate_sql_with_fix", lambda message, history: "SELECT 1")
     monkeypatch.setattr(chat_service, "_execute_query_with_retry", lambda message, history, sql: (sql, {"columns": ["指标", "数值"], "rows": [["注册用户", "1200"]]}))
@@ -47,6 +48,7 @@ def test_stream_chat_invalid_input_returns_error(monkeypatch):
 
 
 def test_stream_chat_sql_failed_returns_error(monkeypatch):
+    monkeypatch.setattr(chat_stream, "try_route", lambda msg, hist: None)
     monkeypatch.setattr(chat_service, "_validate_input", lambda message: None)
     monkeypatch.setattr(chat_service, "_generate_sql_with_fix", _raise_chat_error("SQL_FAILED", "无法生成合规的查询语句"))
 
@@ -59,6 +61,7 @@ def test_stream_chat_sql_failed_returns_error(monkeypatch):
 
 
 def test_stream_chat_sql_timeout_returns_error(monkeypatch):
+    monkeypatch.setattr(chat_stream, "try_route", lambda msg, hist: None)
     monkeypatch.setattr(chat_service, "_validate_input", lambda message: None)
     monkeypatch.setattr(chat_service, "_generate_sql_with_fix", lambda message, history: "SELECT 1")
     monkeypatch.setattr(chat_service, "_execute_query_with_retry", _raise_chat_error("SQL_TIMEOUT", "查询超时"))
@@ -72,6 +75,7 @@ def test_stream_chat_sql_timeout_returns_error(monkeypatch):
 
 
 def test_stream_chat_zero_rows_still_sends_table(monkeypatch):
+    monkeypatch.setattr(chat_stream, "try_route", lambda msg, hist: None)
     monkeypatch.setattr(chat_service, "_validate_input", lambda message: None)
     monkeypatch.setattr(chat_service, "_generate_sql_with_fix", lambda message, history: "SELECT 1")
     monkeypatch.setattr(chat_service, "_execute_query_with_retry", lambda message, history, sql: (sql, {"columns": ["注册用户"], "rows": []}))
@@ -86,6 +90,7 @@ def test_stream_chat_zero_rows_still_sends_table(monkeypatch):
 
 
 def test_stream_chat_summary_failure_sends_fallback_then_done(monkeypatch):
+    monkeypatch.setattr(chat_stream, "try_route", lambda msg, hist: None)
     monkeypatch.setattr(chat_service, "_validate_input", lambda message: None)
     monkeypatch.setattr(chat_service, "_generate_sql_with_fix", lambda message, history: "SELECT 1")
     monkeypatch.setattr(chat_service, "_execute_query_with_retry", lambda message, history, sql: (sql, {"columns": ["注册用户"], "rows": [["1200"]]}))
@@ -106,6 +111,7 @@ def test_stream_chat_summary_failure_sends_fallback_then_done(monkeypatch):
 
 def test_stream_chat_done_and_error_are_mutually_exclusive(monkeypatch):
     """done and error must never both appear in the same response"""
+    monkeypatch.setattr(chat_stream, "try_route", lambda msg, hist: None)
     monkeypatch.setattr(chat_service, "_validate_input", lambda message: None)
     monkeypatch.setattr(chat_service, "_generate_sql_with_fix", lambda message, history: "SELECT 1")
     monkeypatch.setattr(chat_service, "_execute_query_with_retry", lambda message, history, sql: (sql, {"columns": ["x"], "rows": [["1"]]}))
@@ -120,6 +126,7 @@ def test_stream_chat_done_and_error_are_mutually_exclusive(monkeypatch):
 
 def test_stream_chat_follow_up_inherits_history(monkeypatch):
     captured = {}
+    monkeypatch.setattr(chat_stream, "try_route", lambda msg, hist: None)
     monkeypatch.setattr(chat_service, "_validate_input", lambda message: None)
 
     def capture_sql(message, history):
@@ -144,3 +151,48 @@ def _raise_chat_error(code, message):
     def raiser(*args, **kwargs):
         raise chat_service.ChatError(code, message)
     return raiser
+
+
+# --- 快速路由命中测试 ---
+
+def test_stream_chat_routed_skips_nl2sql(monkeypatch):
+    """路由命中时跳过 NL2SQL 和 DB 查询，直接返回表格 + AI 总结"""
+    fake_data = {"columns": ["月份", "销量", "销售额"], "rows": [["2026-03", "500", "12000"]]}
+    monkeypatch.setattr(chat_stream, "try_route", lambda msg, hist: fake_data)
+    monkeypatch.setattr(chat_service, "_validate_input", lambda message: None)
+    monkeypatch.setattr(chat_service, "_stream_summary_chunks",
+                        lambda message, table_data, history: iter(["3月销量500单。"]))
+
+    events = _collect_events(chat_stream.stream_chat_events("3月销量", []))
+
+    types_list = [e["type"] for e in events]
+    # 不应出现 generating_sql 和 querying 阶段
+    assert "status" in types_list
+    assert events[-1]["type"] == "done"
+    stages = [e.get("stage") for e in events if e["type"] == "status"]
+    assert "generating_sql" not in stages
+    assert "querying" not in stages
+    assert "understanding" in stages
+    assert "summarizing" in stages
+    # 表格数据正确
+    table_events = [e for e in events if e["type"] == "table"]
+    assert len(table_events) == 1
+    assert table_events[0]["rows"] == [["2026-03", "500", "12000"]]
+
+
+def test_stream_chat_route_miss_falls_through_to_nl2sql(monkeypatch):
+    """路由未命中时走正常 NL2SQL 流程"""
+    monkeypatch.setattr(chat_stream, "try_route", lambda msg, hist: None)
+    monkeypatch.setattr(chat_service, "_validate_input", lambda message: None)
+    monkeypatch.setattr(chat_service, "_generate_sql_with_fix", lambda message, history: "SELECT 1")
+    monkeypatch.setattr(chat_service, "_execute_query_with_retry",
+                        lambda message, history, sql: (sql, {"columns": ["x"], "rows": [["1"]]}))
+    monkeypatch.setattr(chat_service, "_stream_summary_chunks",
+                        lambda message, table_data, history: iter(["ok"]))
+
+    events = _collect_events(chat_stream.stream_chat_events("一个奇怪的问题", []))
+
+    stages = [e.get("stage") for e in events if e["type"] == "status"]
+    assert "generating_sql" in stages
+    assert "querying" in stages
+    assert events[-1]["type"] == "done"
