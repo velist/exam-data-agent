@@ -78,39 +78,152 @@ function isNumeric(v: string): boolean {
   return /^-?[\d,]+(\.\d+)?%?$/.test(v.trim());
 }
 
+/** Detect if a string looks like a date (YYYY-MM, YYYY/MM, YYYY-MM-DD, etc.) */
+function isDateLike(v: string): boolean {
+  return /^\d{4}[-/]\d{1,2}([-/]\d{1,2})?$/.test(v.trim());
+}
+
 function parseNumericValue(v: string): number {
   return Number.parseFloat(v.trim().replace(/[,%]/g, ""));
+}
+
+/** Format an integer with thousand separators, no decimal places */
+function formatInteger(n: number): string {
+  return n.toLocaleString("en-US", { minimumFractionDigits: 0, maximumFractionDigits: 0 });
+}
+
+/** Format a float with thousand separators and 2 decimal places */
+function formatFloat(n: number): string {
+  return n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
+/** Decide whether to format as float (2 decimals) or integer (no decimals) */
+function shouldFormatAsFloat(raw: string, num: number): boolean {
+  // If the raw string has a decimal point, check if the value is actually a whole number
+  if (raw.includes(".")) {
+    // Values like "1805.0" or "5563.00" from DB should be treated as integers
+    return num !== Math.floor(num);
+  }
+  return false;
+}
+
+/** Format a raw cell value: apply number formatting */
+function formatCellDisplay(val: string): string {
+  if (!val) return val;
+  const trimmed = val.trim();
+
+  // Skip date-like values
+  if (isDateLike(trimmed)) return val;
+
+  // Percentage: format number part, keep % and leading sign
+  const pctMatch = trimmed.match(/^([+-]?)([\d,]+(?:\.\d+)?)%$/);
+  if (pctMatch) {
+    const sign = pctMatch[1];
+    const numStr = pctMatch[2];
+    const num = Number.parseFloat(numStr.replace(/,/g, ""));
+    if (!Number.isNaN(num)) {
+      const fmt = shouldFormatAsFloat(numStr, num) ? formatFloat(num) : formatInteger(num);
+      return `${sign}${fmt}%`;
+    }
+  }
+
+  // Plain number
+  if (isNumeric(trimmed)) {
+    const num = Number.parseFloat(trimmed.replace(/,/g, ""));
+    if (!Number.isNaN(num)) {
+      return shouldFormatAsFloat(trimmed, num) ? formatFloat(num) : formatInteger(num);
+    }
+  }
+
+  return val;
+}
+
+/** Detect cell value type for CSS styling */
+function getCellDisplayClass(val: string): string {
+  if (!val) return "";
+  const trimmed = val.trim();
+  if (/^[↑▲]\s*/.test(trimmed)) return "trend-up";
+  if (/^[↓▼]\s*/.test(trimmed)) return "trend-down";
+  if (isNumeric(trimmed)) return "num-highlight";
+  return "";
 }
 
 /** Format cell value: highlight numbers, detect trend arrows */
 function formatCellValue(val: string): ReactNode {
   if (!val) return val;
-  const trimmed = val.trim();
-
-  // trend indicators
-  if (/^[↑▲]\s*/.test(trimmed))
-    return <span className="trend-up">{trimmed.replace(/^[↑▲]\s*/, "")}</span>;
-  if (/^[↓▼]\s*/.test(trimmed))
-    return <span className="trend-down">{trimmed.replace(/^[↓▼]\s*/, "")}</span>;
-
-  // numeric highlight
-  if (isNumeric(trimmed))
-    return <span className="num-highlight">{trimmed}</span>;
-
-  return val;
+  const display = formatCellDisplay(val);
+  const cls = getCellDisplayClass(val);
+  if (cls) return <span className={cls}>{display}</span>;
+  return display || val;
 }
 
-/** Render insight text with inline number highlighting */
+/** Render insight text with inline number highlighting and formatting */
 function renderInsightText(text: string): ReactNode {
-  // Split text at number patterns (e.g., 988人, 14.5%, ¥1,200)
-  const parts = text.split(/([\d,]+(?:\.\d+)?[%¥元人次个件天月周年万亿]?)/g);
-  return parts.map((part, i) =>
-    /^[\d,]+(?:\.\d+)?[%¥元人次个件天月周年万亿]?$/.test(part) && part.length > 0 ? (
-      <span key={i} className="num-highlight">{part}</span>
-    ) : (
-      <span key={i}>{part}</span>
-    ),
-  );
+  // Protect dates like "2024-01", "2024/03-15", "2026年3月", "2026年" by pre-replacing with non-numeric tokens
+  const dateTokens: string[] = [];
+  const tagChars = "abcdefghijklmnopqrst";
+  let protectedText = text.replace(/(\d{4}[-/]\d{1,2}([-/]\d{1,2})?)/g, (_full, dateStr) => {
+    const tag = `@DT${tagChars[dateTokens.length]}@`;
+    dateTokens.push(dateStr);
+    return tag;
+  });
+  // Also protect Chinese date patterns: "2026年3月", "2026年"
+  protectedText = protectedText.replace(/(\d{4}年(?:\d{1,2}月)?)/g, (_full, dateStr) => {
+    const tag = `@DT${tagChars[dateTokens.length]}@`;
+    dateTokens.push(dateStr);
+    return tag;
+  });
+
+  // Split at number patterns
+  const parts = protectedText.split(/([\d,]+(?:\.\d+)?[%¥元人次个件天月周年万亿]?)/g);
+
+  const elements: ReactNode[] = [];
+  let tokenCounter = 0;
+
+  // Build a map for fast token→index lookup
+  const tokenMap = new Map<string, string>();
+  dateTokens.forEach((d, i) => tokenMap.set(`@DT${tagChars[i]}@`, d));
+
+  parts.forEach((part) => {
+    // If this part contains a date token, restore all dates in it
+    if (/@DT[a-t]@/.test(part)) {
+      const restored = part.replace(/@DT([a-t])@/g, (_m, ch) => {
+        const idx = tagChars.indexOf(ch);
+        return dateTokens[idx] ?? "";
+      });
+      elements.push(<span key={`r-${tokenCounter++}`}>{restored}</span>);
+      return;
+    }
+
+    if (!/^\d/.test(part)) {
+      elements.push(<span key={`t-${tokenCounter++}`}>{part}</span>);
+      return;
+    }
+
+    const match = part.match(/^([\d,]+(?:\.\d+)?)([%¥元人次个件天月周年万亿]?)$/);
+    if (!match) {
+      elements.push(<span key={`x-${tokenCounter++}`}>{part}</span>);
+      return;
+    }
+
+    const numStr = match[1];
+    const unit = match[2];
+    const num = Number.parseFloat(numStr.replace(/,/g, ""));
+    if (Number.isNaN(num)) {
+      elements.push(<span key={`n-${tokenCounter++}`}>{part}</span>);
+      return;
+    }
+
+    const formatted = shouldFormatAsFloat(numStr, num) ? formatFloat(num) : formatInteger(num);
+    elements.push(
+      <span key={`h-${tokenCounter++}`} className="num-highlight">
+        {formatted}
+        {unit}
+      </span>,
+    );
+  });
+
+  return elements;
 }
 
 /** Try to extract chart-friendly data from a table (label col + numeric cols) */
@@ -163,7 +276,8 @@ export default function ChatBubble({ role, content, table, statusText, error }: 
   const handleDownloadXlsx = () => {
     if (!table || table.columns.length === 0 || table.rows.length === 0) return;
 
-    const worksheet = XLSX.utils.aoa_to_sheet([table.columns, ...table.rows]);
+    const exportColumns = table.columns.map((col) => getColumnLabel(col));
+    const worksheet = XLSX.utils.aoa_to_sheet([exportColumns, ...table.rows]);
     const workbook = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(workbook, worksheet, "数据");
     XLSX.writeFile(workbook, formatExportFileName(new Date()));

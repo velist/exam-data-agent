@@ -21,6 +21,7 @@ TABLES = {
     "dws_retention_user_report_week": "SELECT * FROM dws.dws_retention_user_report_week ORDER BY end_dt DESC",
     "dws_user_behavior_report_week": "SELECT * FROM dws.dws_user_behavior_report_week ORDER BY end_dt DESC",
     "dws_user_daily_quiz_stats_day": "SELECT * FROM dws.dws_user_daily_quiz_stats_day ORDER BY stat_date DESC",
+    "dws_operation_report_user_day": "SELECT * FROM dws.dws_operation_report_user_day ORDER BY end_date DESC",
 }
 
 _cache: dict[str, dict] = {}

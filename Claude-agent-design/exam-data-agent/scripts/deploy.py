@@ -9,7 +9,7 @@ import tempfile
 import paramiko
 
 # 服务器配置
-SERVER_HOST = "172.10.10.26"
+SERVER_HOST = "172.10.10.51"
 SERVER_PORT = 2143
 SERVER_USER = "yingteng"
 SERVER_PASS = "ytjy1234"

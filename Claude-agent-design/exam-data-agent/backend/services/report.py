@@ -109,6 +109,42 @@ def _build_section(rows: list, columns: list, metrics_config: list[dict]) -> dic
     return {"metrics": metrics, "trend": trend}
 
 
+def _format_pct_change(value) -> str:
+    parsed = parse_pct(value)
+    if parsed is None:
+        return "N/A"
+    sign = "+" if parsed >= 0 else ""
+    return f"{sign}{parsed:.2f}%"
+
+
+def _get_latest_operation_quiz_summary(end_date: str) -> dict | None:
+    data = query_cached(
+        "dws_operation_report_user_day",
+        filters={"end_date": {"op": "<=", "value": end_date}},
+        order_by="end_date",
+        order_desc=True,
+        limit=1,
+    )
+    if not data["rows"]:
+        return None
+    col_idx = {c: i for i, c in enumerate(data["columns"])}
+    row = data["rows"][0]
+    return {col: row[idx] for col, idx in col_idx.items()}
+
+
+def _get_operation_quiz_rows(start_date: str, end_date: str) -> list[dict]:
+    data = query_cached(
+        "dws_operation_report_user_day",
+        filters={"end_date": {"op": "between", "value": [start_date, end_date]}},
+        order_by="end_date",
+        order_desc=False,
+    )
+    if not data["rows"]:
+        return []
+    col_idx = {c: i for i, c in enumerate(data["columns"])}
+    return [{col: row[idx] for col, idx in col_idx.items()} for row in data["rows"]]
+
+
 def get_weekly_report(date_str: str) -> dict:
     start_date, end_date = get_week_range(date_str)
     result = {"period": {"start": start_date, "end": end_date}, "sections": {}}
@@ -163,6 +199,13 @@ def get_weekly_report(date_str: str) -> dict:
         {"key": "avg_play_progress", "label": "人均播放进度", "col": "avg_play_progress", "last_col": "last_week_avg_play_progress", "yoy_col": "avg_play_progress_yoy"},
         {"key": "quiz_rate", "label": "人均刷题量", "col": "quiz_rate", "last_col": "last_week_quiz_rate", "yoy_col": "quiz_rate_yoy"},
     ])
+    operation_quiz_summary = _get_latest_operation_quiz_summary(end_date)
+    if operation_quiz_summary:
+        behavior_metrics = result["sections"].get("behavior", {}).get("metrics", {})
+        if "quiz_rate" in behavior_metrics:
+            behavior_metrics["quiz_rate"]["value"] = operation_quiz_summary.get("week_avg_quiz_count", behavior_metrics["quiz_rate"]["value"])
+            behavior_metrics["quiz_rate"]["wow"] = _format_pct_change(operation_quiz_summary.get("quiz_count_week_growth"))
+            behavior_metrics["quiz_rate"]["yoy"] = _format_pct_change(operation_quiz_summary.get("quiz_count_week_yoy"))
 
     # 5. 用户增长（日粒度）
     daily_data = query_cached(
@@ -195,11 +238,18 @@ def get_weekly_report(date_str: str) -> dict:
 
         last = enriched[-1]
         active_metrics = result["sections"].get("active", {}).get("metrics", {})
+        quiz_value = last["week_avg_exam"]
+        quiz_wow = "N/A"
+        quiz_yoy = "N/A"
+        if operation_quiz_summary:
+            quiz_value = operation_quiz_summary.get("week_avg_quiz_count", quiz_value)
+            quiz_wow = _format_pct_change(operation_quiz_summary.get("quiz_count_week_growth"))
+            quiz_yoy = _format_pct_change(operation_quiz_summary.get("quiz_count_week_yoy"))
         result["sections"]["user_growth"] = {
             "metrics": {
                 "daily_register": {"label": "本周日均注册", "value": last["week_avg_register"], "wow": active_metrics.get("reg_users", {}).get("wow", "N/A"), "yoy": active_metrics.get("reg_users", {}).get("yoy", "N/A")},
                 "daily_active": {"label": "本周日均活跃", "value": last["week_avg_active"], "wow": active_metrics.get("active_users", {}).get("wow", "N/A"), "yoy": active_metrics.get("active_users", {}).get("yoy", "N/A")},
-                "daily_avg_exam": {"label": "本周人均刷题", "value": last["week_avg_exam"], "wow": "N/A", "yoy": "N/A"},
+                "daily_avg_exam": {"label": "本周人均刷题", "value": quiz_value, "wow": quiz_wow, "yoy": quiz_yoy},
             },
             "trend": [{"start": e["stat_date"], "daily_register": e["daily_register_count"], "daily_active": e["daily_active_count"]} for e in enriched],
         }
@@ -356,6 +406,7 @@ def get_range_report(start_str: str, end_str: str) -> dict:
         filters={"stat_date": {"op": "between", "value": [start_str, end_str]}},
         order_by="stat_date", order_desc=False,
     )
+    operation_quiz_rows = _get_operation_quiz_rows(start_str, end_str)
     if daily_data["rows"]:
         col_idx = {c: i for i, c in enumerate(daily_data["columns"])}
         rows = daily_data["rows"]
@@ -375,12 +426,24 @@ def get_range_report(start_str: str, end_str: str) -> dict:
             })
 
         days = len(rows)
+        quiz_value = round(total_exam / days, 2)
+        if operation_quiz_rows:
+            quiz_total = 0.0
+            quiz_days = 0
+            for row in operation_quiz_rows:
+                parsed = parse_pct(row.get("avg_quiz_count"))
+                if parsed is None:
+                    continue
+                quiz_total += parsed
+                quiz_days += 1
+            if quiz_days:
+                quiz_value = round(quiz_total / quiz_days, 2)
         active_metrics = result["sections"].get("active", {}).get("metrics", {})
         result["sections"]["user_growth"] = {
             "metrics": {
                 "daily_register": {"label": "区间日均注册", "value": round(total_reg / days), "wow": active_metrics.get("reg_users", {}).get("wow", "N/A"), "yoy": active_metrics.get("reg_users", {}).get("yoy", "N/A")},
                 "daily_active": {"label": "区间日均活跃", "value": round(total_act / days), "wow": active_metrics.get("active_users", {}).get("wow", "N/A"), "yoy": active_metrics.get("active_users", {}).get("yoy", "N/A")},
-                "daily_avg_exam": {"label": "区间人均刷题", "value": round(total_exam / days, 2), "wow": "N/A", "yoy": "N/A"},
+                "daily_avg_exam": {"label": "区间人均刷题", "value": quiz_value, "wow": "N/A", "yoy": "N/A"},
             },
             "trend": trend,
         }

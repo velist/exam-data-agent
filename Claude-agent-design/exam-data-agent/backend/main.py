@@ -1,9 +1,11 @@
 import os
+import uuid
+from datetime import datetime
 from pathlib import Path
 from contextlib import asynccontextmanager
-from fastapi import FastAPI, Query, WebSocket, WebSocketDisconnect, HTTPException
+from fastapi import FastAPI, Query, WebSocket, WebSocketDisconnect, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import StreamingResponse, FileResponse
+from fastapi.responses import StreamingResponse, FileResponse, Response
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
@@ -14,12 +16,26 @@ from services.report import get_weekly_report, get_monthly_report, get_range_rep
 from services.report_cache import init_cache
 from services.dataset_cache import init_dataset_cache
 from services.insight import stream_insight
+from services.debug import get_logs, export_logs, clear_logs, cancel_query, cleanup_old_logs
+
+
+def _client_ip(request: Request) -> str:
+    """获取客户端真实 IP，优先从反向代理头获取"""
+    forwarded = request.headers.get("X-Forwarded-For")
+    if forwarded:
+        return forwarded.split(",")[0].strip()
+    real_ip = request.headers.get("X-Real-IP")
+    if real_ip:
+        return real_ip.strip()
+    host = request.client.host if request.client else "unknown"
+    return host
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     init_cache()
     init_dataset_cache()
+    cleanup_old_logs()
     yield
 
 
@@ -45,11 +61,17 @@ def api_chat(req: ChatRequest):
 
 
 @app.post("/api/chat/stream")
-def api_chat_stream(req: ChatRequest):
+def api_chat_stream(req: ChatRequest, request: Request):
+    query_id = uuid.uuid4().hex[:12]
+    ip = _client_ip(request)
     return StreamingResponse(
-        stream_chat_events(req.message, req.history),
+        stream_chat_events(req.message, req.history, query_id=query_id, client_ip=ip),
         media_type="text/event-stream",
-        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+        headers={
+            "Cache-Control": "no-cache",
+            "X-Accel-Buffering": "no",
+            "X-Query-Id": query_id,
+        },
     )
 
 
@@ -88,6 +110,41 @@ async def api_insight_stream(
     )
 
 
+# --- 调试 API ---
+
+
+@app.get("/api/debug/logs")
+def api_debug_logs(request: Request, limit: int = Query(50, ge=1, le=200)):
+    ip = _client_ip(request)
+    return {"logs": get_logs(ip, limit)}
+
+
+@app.get("/api/debug/logs/export")
+def api_debug_logs_export(request: Request):
+    """导出日志：服务器保存 + 返回下载"""
+    ip = _client_ip(request)
+    json_str, saved_path = export_logs(ip)
+    filename = f"debug-logs-{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
+    return Response(
+        content=json_str,
+        media_type="application/json",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+@app.delete("/api/debug/logs")
+def api_debug_logs_clear(request: Request):
+    ip = _client_ip(request)
+    clear_logs(ip)
+    return {"ok": True}
+
+
+@app.post("/api/debug/cancel/{query_id}")
+def api_debug_cancel(query_id: str):
+    ok = cancel_query(query_id)
+    return {"ok": ok, "query_id": query_id}
+
+
 @app.get("/api/health")
 def health():
     return {"status": "ok"}
@@ -113,5 +170,4 @@ if DIST_DIR.exists():
 
     @app.get("/{full_path:path}")
     async def serve_spa(full_path: str):
-        """SPA fallback: 非 /api 路径全部返回 index.html"""
         return FileResponse(str(DIST_DIR / "index.html"))

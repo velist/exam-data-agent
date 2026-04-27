@@ -15,7 +15,15 @@
 - **综合概览**：最近情况、整体怎么样、数据怎么样 → 查 dws.dws_active_user_report_week 最新一行（给出注册+活跃+有效活跃）
 - **异常/评价类**："有什么异常吗""好不好""还行吗""有没有好转" → 同综合概览，查最新2行数据做环比对比
 - **关键指标汇总**："关键指标""核心指标""所有指标" → 查最新一周的注册+活跃+付费+留存核心数据
-- **口语化表达映射**："拉新"=注册用户，"钱/赚了多少"=销售额，"卖了多少单/销量"=count(*)，"粘性"=留存率+活跃率，"DAU"=日活跃用户
+- **口语化表达映射**："拉新"=注册用户，"钱/赚了多少"=销售额，"卖了多少单/销量"=count(*)，"粘性"=留存率+活跃率，"DAU"=日活跃用户，"金额/收入/赚了"在销售语境下=SUM(销售金额)，"直充/APP直充金额/APP直充收入/APP直充销售额"=SUM(销售金额) WHERE 渠道类型 = 'APP直充'，其他渠道同理（如"合作商金额"=SUM(销售金额) WHERE 渠道类型 = '合作商'）
+
+---
+
+## 第零步：涉及"APP直充""合作商""客服""旗舰店"等渠道+金额的硬规则（最高优先级）
+- 用户问"APP直充金额""APP直充收入""APP直充销售额""直充金额"等任何涉及具体渠道+金额/收入/销售额的组合，**必须且仅能**查询 dws.dws_v_salesflow_dateil，因为只有此视图包含「渠道类型」字段。
+- **绝对禁止**尝试直连物理表或其他表，所有渠道拆分数据必须在视图中通过 WHERE 渠道类型 = 'XXX' 完成。
+- 同理：用户问各渠道金额对比/排行时，均使用 dws.dws_v_salesflow_dateil 按 GROUP BY 渠道类型 处理。
+- 目前只有此视图提供渠道类型维度数据，其他表/实体表的数据可能不包含渠道维度，会使返回信息有误，千万不要尝试。
 
 ## 第二步：时间理解（极其重要）
 
@@ -129,11 +137,13 @@
 - 用户问"销售额""成交金额""赚了多少"时，统一理解为 `SUM(销售金额)`
 - 用户问渠道业绩、部门业绩、系列业绩、班次业绩时，本质上都是在销售流水表中按对应维度聚合
 
-### 渠道类型使用规则
-视图 `dws_v_salesflow_dateil` 已包含 `渠道类型` 字段，取值为：合作商、客服、旗舰店、APP直充、其他。
-- 直接使用 `WHERE 渠道类型 = 'APP直充'` 即可，**不要使用 CASE 表达式重新映射**
+### 渠道类型使用规则（强制执行）
+- 视图 `dws_v_salesflow_dateil` 已包含 `渠道类型` 字段，取值为：合作商、客服、旗舰店、APP直充、其他。
+- **任何涉及具体渠道的查询（如 APP直充、合作商、客服、旗舰店），必须且仅能通过此视图 WHERE 渠道类型 = 'XXX' 实现**，不可直接从物理表中自行推导。
+- 例如 WHERE 渠道类型 = 'APP直充'，**不要使用 CASE 表达式重新映射**
 - 用户问"各渠道类型"时，直接 `GROUP BY 渠道类型`
-- 用户问"APP直充"时，直接 `WHERE 渠道类型 = 'APP直充'`
+- 用户问"APP直充" / "APP直充金额"时，直接 `WHERE 渠道类型 = 'APP直充'`，然后 SELECT SUM(销售金额)
+- 其他表（包括实体表和周报表）的同类数据由于缺少渠道字段，不可用于渠道拆分查询
 
 ### 用户画像与埋点限制
 - 用户画像类问题只能做注册/活跃规模的近似回答，不能承诺省份、城市、职称、注册渠道来源等细颗粒画像维度
@@ -157,6 +167,21 @@ SQL: SELECT start_dt, end_dt, active_users AS 活跃用户 FROM dws.dws_active_u
 
 用户: 最近7天每天销量和销售额
 SQL: SELECT 销售日期, COUNT(*) AS 销量, SUM(销售金额) AS 销售额 FROM dws.dws_v_salesflow_dateil WHERE 销售日期 BETWEEN DATE_SUB('{today}', INTERVAL 7 DAY) AND DATE_SUB('{today}', INTERVAL 1 DAY) GROUP BY 销售日期 ORDER BY 销售日期
+
+用户: APP直充金额
+SQL: SELECT SUM(销售金额) AS APP直充金额 FROM dws.dws_v_salesflow_dateil WHERE 渠道类型 = 'APP直充'
+
+用户: APP直充销售额多少
+SQL: SELECT SUM(销售金额) AS APP直充销售额 FROM dws.dws_v_salesflow_dateil WHERE 渠道类型 = 'APP直充'
+
+用户: 合作商金额多少
+SQL: SELECT SUM(销售金额) AS 合作商金额 FROM dws.dws_v_salesflow_dateil WHERE 渠道类型 = '合作商'
+
+用户: APP直充最近7天每天金额
+SQL: SELECT 销售日期, SUM(销售金额) AS APP直充金额 FROM dws.dws_v_salesflow_dateil WHERE 销售日期 BETWEEN DATE_SUB('{today}', INTERVAL 7 DAY) AND DATE_SUB('{today}', INTERVAL 1 DAY) AND 渠道类型 = 'APP直充' GROUP BY 销售日期 ORDER BY 销售日期
+
+用户: 3月APP直充销售额
+SQL: SELECT SUM(销售金额) AS APP直充销售额 FROM dws.dws_v_salesflow_dateil WHERE 销售日期 >= '2026-03-01' AND 销售日期 < '2026-04-01' AND 渠道类型 = 'APP直充'
 
 用户: 3月各渠道类型销量和销售额
 SQL: SELECT 渠道类型, COUNT(*) AS 销量, SUM(销售金额) AS 销售额 FROM dws.dws_v_salesflow_dateil WHERE 销售日期 >= '2026-03-01' AND 销售日期 < '2026-04-01' GROUP BY 渠道类型 ORDER BY 销售额 DESC
