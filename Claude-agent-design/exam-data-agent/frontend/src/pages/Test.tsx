@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import ChatBubble from "../components/ChatBubble";
-import { streamChat, StreamChatError } from "../api";
+import { streamChat, StreamChatError, BASE_URL } from "../api";
 import {
   type ChatMessage,
   buildHistorySnapshot,
@@ -41,7 +41,7 @@ export default function Test() {
   // Fetch logs periodically
   const fetchLogs = useCallback(async () => {
     try {
-      const res = await fetch("/api/debug/logs?limit=100");
+      const res = await fetch(`${BASE_URL}/api/debug/logs?limit=100`);
       if (res.ok) {
         const data = await res.json();
         setLogs(data.logs || []);
@@ -67,14 +67,14 @@ export default function Test() {
     // Backend cancel
     if (queryId) {
       try {
-        await fetch(`/api/debug/cancel/${queryId}`, { method: "POST" });
+        await fetch(`${BASE_URL}/api/debug/cancel/${queryId}`, { method: "POST" });
       } catch {}
     }
   };
 
   const handleExportLogs = async () => {
     try {
-      const res = await fetch("/api/debug/logs/export");
+      const res = await fetch(`${BASE_URL}/api/debug/logs/export`);
       if (!res.ok) return;
       const blob = await res.blob();
       const url = URL.createObjectURL(blob);
@@ -91,7 +91,7 @@ export default function Test() {
 
   const handleClearLogs = async () => {
     try {
-      await fetch("/api/debug/logs", { method: "DELETE" });
+      await fetch(`${BASE_URL}/api/debug/logs`, { method: "DELETE" });
       setLogs([]);
       setLogExpanded({});
     } catch {}
